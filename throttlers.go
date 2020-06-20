@@ -15,9 +15,7 @@ import (
 type Throttler interface {
 	Acquire(context.Context) error
 	Release(context.Context) error
-
-	New() Throttler
-	Reset() Throttler
+	Clone() Throttler
 }
 
 type tfixed struct {
@@ -41,13 +39,8 @@ func (t *tfixed) Release(context.Context) error {
 	return nil
 }
 
-func (t *tfixed) New() Throttler {
+func (t *tfixed) Clone() Throttler {
 	return NewThrottlerFixed(t.m)
-}
-
-func (t *tfixed) Reset() Throttler {
-	atomic.StoreUint64(&t.c, 0)
-	return t
 }
 
 type tatomic struct {
@@ -75,18 +68,12 @@ func (t *tatomic) Release(context.Context) error {
 	return nil
 }
 
-func (t *tatomic) New() Throttler {
+func (t *tatomic) Clone() Throttler {
 	return NewThrottlerAtomic(t.m)
-}
-
-func (t *tatomic) Reset() Throttler {
-	atomic.StoreUint64(&t.r, 0)
-	return t
 }
 
 type tblocking struct {
 	r chan struct{}
-	b sync.Mutex
 }
 
 func NewThrottlerBlocking(max uint64) *tblocking {
@@ -94,9 +81,7 @@ func NewThrottlerBlocking(max uint64) *tblocking {
 }
 
 func (t *tblocking) Acquire(context.Context) error {
-	t.b.Lock()
 	t.r <- struct{}{}
-	t.b.Unlock()
 	return nil
 }
 
@@ -109,53 +94,38 @@ func (t *tblocking) Release(context.Context) error {
 	return nil
 }
 
-func (t *tblocking) New() Throttler {
+func (t *tblocking) Clone() Throttler {
 	return NewThrottlerBlocking(uint64(len(t.r)))
 }
 
-func (t *tblocking) Reset() Throttler {
-	t.b.Lock()
-	for {
-		select {
-		case <-t.r:
-		default:
-			t.b.Unlock()
-			return t
-		}
-	}
-}
-
 type ttimed struct {
-	t Throttler
+	tfixed
 	d time.Duration
 }
 
-func NewThrottlerTimed(t Throttler, duration time.Duration) ttimed {
+func NewThrottlerTimed(max uint64, duration time.Duration) *ttimed {
+	t := ttimed{tfixed: *NewThrottlerFixed(max), d: duration}
 	go func() {
 		tick := time.NewTicker(duration)
 		defer tick.Stop()
 		for {
 			<-tick.C
-			t.Reset()
+			atomic.StoreUint64(&t.c, 0)
 		}
 	}()
-	return ttimed{t: t, d: duration}
+	return &t
 }
 
-func (t ttimed) Acquire(ctx context.Context) error {
-	return t.t.Acquire(ctx)
+func (t *ttimed) Acquire(ctx context.Context) error {
+	return t.tfixed.Acquire(ctx)
 }
 
-func (t ttimed) Release(ctx context.Context) error {
-	return t.t.Release(ctx)
+func (t *ttimed) Release(ctx context.Context) error {
+	return t.tfixed.Release(ctx)
 }
 
-func (t ttimed) New() Throttler {
-	return NewThrottlerTimed(t.t.New(), t.d)
-}
-
-func (t ttimed) Reset() Throttler {
-	return t.t.Reset()
+func (t *ttimed) New() Throttler {
+	return NewThrottlerTimed(t.tfixed.m, t.d)
 }
 
 func KeyedContext(ctx context.Context, key interface{}) context.Context {
@@ -171,7 +141,7 @@ type tkeyed struct {
 
 func (t *tkeyed) Acquire(ctx context.Context) error {
 	if key := ctx.Value(gohaltctxkey); key != nil {
-		r, _ := t.t.LoadOrStore(key, t.o.New())
+		r, _ := t.t.LoadOrStore(key, t.o.Clone())
 		return r.(Throttler).Acquire(ctx)
 	}
 	return errors.New("throttler can't find any key")
@@ -187,19 +157,11 @@ func (t *tkeyed) Release(ctx context.Context) error {
 	return errors.New("throttler can't find any key")
 }
 
-func (t *tkeyed) New() Throttler {
+func (t *tkeyed) Clone() Throttler {
 	newt := tkeyed{o: t.o}
 	t.t.Range(func(key interface{}, val interface{}) bool {
-		newt.t.Store(key, val.(Throttler).New())
+		newt.t.Store(key, t.o.Clone())
 		return true
 	})
 	return &newt
-}
-
-func (t *tkeyed) Reset() Throttler {
-	t.t.Range(func(key interface{}, val interface{}) bool {
-		val.(Throttler).Reset()
-		return true
-	})
-	return t
 }
