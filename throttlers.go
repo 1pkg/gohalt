@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -174,4 +175,46 @@ func (thr *tkeyed) Release(ctx context.Context) error {
 		return errors.New("throttler has nothing to release")
 	}
 	return errors.New("keyed throttler can't find any key")
+}
+
+type tmemmark struct {
+	alloc    uint64
+	system   uint64
+	avgpause uint64
+}
+
+func NewThrottlerMemMark(alloc uint64, system uint64, avgpause uint64) tmemmark {
+	return tmemmark{alloc: alloc, system: system, avgpause: avgpause}
+}
+
+func (thr tmemmark) Acquire(context.Context) error {
+	alloc, system, avgpause := thr.stats()
+	if thr.alloc >= alloc ||
+		thr.system >= system ||
+		thr.avgpause >= avgpause {
+		return fmt.Errorf(
+			`throttler memory watermark limit has been exceed
+alloc %d mb, system %d mb, average collector pause %s`,
+			alloc/1024,
+			system/1024,
+			time.Duration(avgpause),
+		)
+	}
+	return nil
+}
+
+func (thr tmemmark) Release(context.Context) error {
+	return nil
+}
+
+func (thr tmemmark) stats() (alloc uint64, system uint64, avgpause uint64) {
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	for _, p := range stats.PauseNs {
+		avgpause += p
+	}
+	avgpause /= 256
+	alloc = stats.Alloc
+	system = stats.Sys
+	return
 }
