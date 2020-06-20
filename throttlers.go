@@ -15,7 +15,9 @@ import (
 type Throttler interface {
 	Acquire(context.Context) error
 	Release(context.Context) error
-	Reset()
+
+	New() Throttler
+	Reset() Throttler
 }
 
 type tatomic struct {
@@ -24,10 +26,7 @@ type tatomic struct {
 }
 
 func NewThrottlerAtomic(max uint64) *tatomic {
-	return &tatomic{
-		r: 0,
-		m: max,
-	}
+	return &tatomic{m: max}
 }
 
 func (t *tatomic) Acquire(context.Context) error {
@@ -46,8 +45,13 @@ func (t *tatomic) Release(context.Context) error {
 	return nil
 }
 
-func (t *tatomic) Reset() {
+func (t *tatomic) New() Throttler {
+	return NewThrottlerAtomic(t.m)
+}
+
+func (t *tatomic) Reset() Throttler {
 	atomic.StoreUint64(&t.r, 0)
+	return t
 }
 
 type tblocking struct {
@@ -56,9 +60,7 @@ type tblocking struct {
 }
 
 func NewThrottlerBlocking(max uint64) *tblocking {
-	return &tblocking{
-		r: make(chan struct{}, max),
-	}
+	return &tblocking{r: make(chan struct{}, max)}
 }
 
 func (t *tblocking) Acquire(context.Context) error {
@@ -77,19 +79,25 @@ func (t *tblocking) Release(context.Context) error {
 	return nil
 }
 
-func (t *tblocking) Reset() {
+func (t *tblocking) New() Throttler {
+	return NewThrottlerBlocking(uint64(len(t.r)))
+}
+
+func (t *tblocking) Reset() Throttler {
 	t.b.Lock()
 	for {
 		select {
 		case <-t.r:
 		default:
 			t.b.Unlock()
+			return t
 		}
 	}
 }
 
 type ttimed struct {
 	t Throttler
+	d time.Duration
 }
 
 func NewThrottlerTimed(t Throttler, duration time.Duration) ttimed {
@@ -101,7 +109,7 @@ func NewThrottlerTimed(t Throttler, duration time.Duration) ttimed {
 			t.Reset()
 		}
 	}()
-	return ttimed{t: t}
+	return ttimed{t: t, d: duration}
 }
 
 func (t ttimed) Acquire(ctx context.Context) error {
@@ -112,6 +120,10 @@ func (t ttimed) Release(ctx context.Context) error {
 	return t.t.Release(ctx)
 }
 
-func (t ttimed) Reset() {
-	t.t.Reset()
+func (t ttimed) New() Throttler {
+	return NewThrottlerTimed(t.t.New(), t.d)
+}
+
+func (t ttimed) Reset() Throttler {
+	return t.t.Reset()
 }
