@@ -127,3 +127,49 @@ func (t ttimed) New() Throttler {
 func (t ttimed) Reset() Throttler {
 	return t.t.Reset()
 }
+
+func KeyedContext(ctx context.Context, key interface{}) context.Context {
+	return context.WithValue(ctx, gohaltctxkey, key)
+}
+
+const gohaltctxkey = "gohalt_context_key"
+
+type tkeyed struct {
+	o Throttler
+	t sync.Map
+}
+
+func (t *tkeyed) Acquire(ctx context.Context) error {
+	if key := ctx.Value(gohaltctxkey); key != nil {
+		r, _ := t.t.LoadOrStore(key, t.o.New())
+		return r.(Throttler).Acquire(ctx)
+	}
+	return errors.New("throttler can't find any key")
+}
+
+func (t *tkeyed) Release(ctx context.Context) error {
+	if key := ctx.Value(gohaltctxkey); key != nil {
+		if r, ok := t.t.Load(key); ok {
+			return r.(Throttler).Release(ctx)
+		}
+		return errors.New("throttler has nothing to release")
+	}
+	return errors.New("throttler can't find any key")
+}
+
+func (t *tkeyed) New() Throttler {
+	newt := tkeyed{o: t.o}
+	t.t.Range(func(key interface{}, val interface{}) bool {
+		newt.t.Store(key, val.(Throttler).New())
+		return true
+	})
+	return &newt
+}
+
+func (t *tkeyed) Reset() Throttler {
+	t.t.Range(func(key interface{}, val interface{}) bool {
+		val.(Throttler).Reset()
+		return true
+	})
+	return t
+}
