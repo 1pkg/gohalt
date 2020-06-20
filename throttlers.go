@@ -20,6 +20,23 @@ type Throttler interface {
 
 type NewThrottler func() Throttler
 
+type each struct {
+	cur uint64
+	num uint64
+}
+
+func (thr *each) Acquire(context.Context) error {
+	atomic.AddUint64(&thr.cur, 1)
+	if thr.cur%thr.num == 0 {
+		return fmt.Errorf("throttler skip has been reached %d", thr.cur)
+	}
+	return nil
+}
+
+func (thr *each) Release(context.Context) error {
+	return nil
+}
+
 type tfixed struct {
 	cur uint64
 	max uint64
@@ -31,7 +48,7 @@ func NewThrottlerFixed(max uint64) *tfixed {
 
 func (thr *tfixed) Acquire(context.Context) error {
 	if atomic.CompareAndSwapUint64(&thr.cur, thr.max, thr.max) {
-		return fmt.Errorf("throttler max running limit has been exceed %d", thr.max)
+		return fmt.Errorf("throttler max running limit has been exceed %d", thr.cur)
 	}
 	atomic.AddUint64(&thr.cur, 1)
 	return nil
@@ -52,7 +69,7 @@ func NewThrottlerAtomic(max uint64) *tatomic {
 
 func (thr *tatomic) Acquire(context.Context) error {
 	if atomic.CompareAndSwapUint64(&thr.run, thr.max, thr.max) {
-		return fmt.Errorf("throttler max running limit has been exceed %d", thr.max)
+		return fmt.Errorf("throttler max running limit has been exceed %d", thr.run)
 	}
 	atomic.AddUint64(&thr.run, 1)
 	return nil
