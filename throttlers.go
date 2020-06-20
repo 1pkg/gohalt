@@ -20,6 +20,36 @@ type Throttler interface {
 	Reset() Throttler
 }
 
+type tfixed struct {
+	c uint64
+	m uint64
+}
+
+func NewThrottlerFixed(max uint64) *tfixed {
+	return &tfixed{m: max}
+}
+
+func (t *tfixed) Acquire(context.Context) error {
+	if atomic.CompareAndSwapUint64(&t.c, t.m, t.m) {
+		return fmt.Errorf("throttler max running limit has been exceed %d", t.m)
+	}
+	atomic.AddUint64(&t.c, 1)
+	return nil
+}
+
+func (t *tfixed) Release(context.Context) error {
+	return nil
+}
+
+func (t *tfixed) New() Throttler {
+	return NewThrottlerFixed(t.m)
+}
+
+func (t *tfixed) Reset() Throttler {
+	atomic.StoreUint64(&t.c, 0)
+	return t
+}
+
 type tatomic struct {
 	r uint64
 	m uint64
