@@ -13,8 +13,8 @@ import (
 // for all derived throttlers, and
 // defines main throttling lock/unlock flows.
 type Throttler interface {
-	Acquire(context.Context) error
-	Release(context.Context) error
+	Acquire(context.Context) (context.Context, error)
+	Release(context.Context) (context.Context, error)
 }
 
 type NewThrottler func() Throttler
@@ -24,16 +24,16 @@ type each struct {
 	num uint64
 }
 
-func (thr *each) Acquire(context.Context) error {
+func (thr *each) Acquire(ctx context.Context) (context.Context, error) {
 	atomic.AddUint64(&thr.cur, 1)
-	if thr.cur%thr.num == 0 {
-		return fmt.Errorf("throttler skip has been reached %d", thr.cur)
+	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
+		return ctx, fmt.Errorf("throttler skip has been reached %d", cur)
 	}
-	return nil
+	return ctx, nil
 }
 
-func (thr *each) Release(context.Context) error {
-	return nil
+func (thr *each) Release(ctx context.Context) (context.Context, error) {
+	return ctx, nil
 }
 
 type tfixed struct {
@@ -45,16 +45,16 @@ func NewThrottlerFixed(max uint64) *tfixed {
 	return &tfixed{max: max}
 }
 
-func (thr *tfixed) Acquire(context.Context) error {
-	if atomic.CompareAndSwapUint64(&thr.cur, thr.max, thr.max) {
-		return fmt.Errorf("throttler max running limit has been exceed %d", thr.cur)
+func (thr *tfixed) Acquire(ctx context.Context) (context.Context, error) {
+	if cur := atomic.LoadUint64(&thr.cur); cur > thr.max {
+		return ctx, fmt.Errorf("throttler max fixed limit has been exceed %d", cur)
 	}
 	atomic.AddUint64(&thr.cur, 1)
-	return nil
+	return ctx, nil
 }
 
-func (thr *tfixed) Release(context.Context) error {
-	return nil
+func (thr *tfixed) Release(ctx context.Context) (context.Context, error) {
+	return ctx, nil
 }
 
 type tatomic struct {
@@ -66,20 +66,20 @@ func NewThrottlerAtomic(max uint64) *tatomic {
 	return &tatomic{max: max}
 }
 
-func (thr *tatomic) Acquire(context.Context) error {
-	if atomic.CompareAndSwapUint64(&thr.run, thr.max, thr.max) {
-		return fmt.Errorf("throttler max running limit has been exceed %d", thr.run)
+func (thr *tatomic) Acquire(ctx context.Context) (context.Context, error) {
+	if run := atomic.LoadUint64(&thr.run); run > thr.max {
+		return ctx, fmt.Errorf("throttler max running limit has been exceed %d", run)
 	}
 	atomic.AddUint64(&thr.run, 1)
-	return nil
+	return ctx, nil
 }
 
-func (thr *tatomic) Release(context.Context) error {
-	if atomic.CompareAndSwapUint64(&thr.run, 0, 0) {
-		return errors.New("throttler has nothing to release")
+func (thr *tatomic) Release(ctx context.Context) (context.Context, error) {
+	if run := atomic.LoadUint64(&thr.run); run <= 0 {
+		return ctx, errors.New("throttler has nothing to release")
 	}
 	atomic.AddUint64(&thr.run, ^uint64(0))
-	return nil
+	return ctx, nil
 }
 
 type tblocking struct {
@@ -90,25 +90,25 @@ func NewThrottlerBlocking(max uint64) *tblocking {
 	return &tblocking{run: make(chan struct{}, max)}
 }
 
-func (thr *tblocking) Acquire(context.Context) error {
+func (thr *tblocking) Acquire(ctx context.Context) (context.Context, error) {
 	thr.run <- struct{}{}
-	return nil
+	return ctx, nil
 }
 
-func (thr *tblocking) Release(context.Context) error {
+func (thr *tblocking) Release(ctx context.Context) (context.Context, error) {
 	select {
 	case <-thr.run:
 	default:
-		return errors.New("throttler has nothing to release")
+		return ctx, errors.New("throttler has nothing to release")
 	}
-	return nil
+	return ctx, nil
 }
 
 type ttimed struct {
 	*tfixed
 }
 
-func NewThrottlerQuartered(max uint64, duration time.Duration, quarter uint64) ttimed {
+func NewThrottlerTimed(max uint64, duration time.Duration, quarter uint64) ttimed {
 	thr := NewThrottlerFixed(max)
 	if duration > 0 {
 		go func() {
@@ -128,11 +128,11 @@ func NewThrottlerQuartered(max uint64, duration time.Duration, quarter uint64) t
 	return ttimed{thr}
 }
 
-func (thr ttimed) Acquire(ctx context.Context) error {
+func (thr ttimed) Acquire(ctx context.Context) (context.Context, error) {
 	return thr.tfixed.Acquire(ctx)
 }
 
-func (thr ttimed) Release(ctx context.Context) error {
+func (thr ttimed) Release(ctx context.Context) (context.Context, error) {
 	return thr.tfixed.Release(ctx)
 }
 
@@ -154,14 +154,14 @@ func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64
 	}
 }
 
-func (thr tstats) Acquire(context.Context) error {
+func (thr tstats) Acquire(ctx context.Context) (context.Context, error) {
 	alloc, system := thr.stats.MEM()
 	avgpause, usage := thr.stats.CPU()
 	if alloc >= thr.alloc ||
 		system >= thr.system ||
 		avgpause >= thr.avgpause ||
 		usage >= thr.usage {
-		return fmt.Errorf(
+		return ctx, fmt.Errorf(
 			`throttler memory watermark limit has been exceed
 alloc %d mb, system %d mb, average collector pause %s`,
 			alloc/1024,
@@ -169,11 +169,40 @@ alloc %d mb, system %d mb, average collector pause %s`,
 			time.Duration(avgpause),
 		)
 	}
-	return nil
+	return ctx, nil
 }
 
-func (thr tstats) Release(context.Context) error {
-	return nil
+func (thr tstats) Release(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+const gohaltctxlatency = "gohalt_context_latency"
+
+type tlatency struct {
+	lat uint64
+	max uint64
+}
+
+func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
+	if lat := atomic.LoadUint64(&thr.lat); lat > thr.max {
+		return ctx, fmt.Errorf("throttler max latency limit has been exceed %d", lat)
+	}
+	ctx = context.WithValue(ctx, gohaltctxlatency, time.Now().UTC().UnixNano())
+	return ctx, nil
+}
+
+func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
+	if lat := atomic.LoadUint64(&thr.lat); lat < thr.max {
+		if lat := ctx.Value(gohaltctxlatency); lat != nil {
+			if ts, ok := lat.(int64); ok {
+				lat := uint64(ts - time.Now().UTC().UnixNano())
+				if lat > thr.lat {
+					atomic.StoreUint64(&thr.lat, lat)
+				}
+			}
+		}
+	}
+	return ctx, nil
 }
 
 func KeyedContext(ctx context.Context, key interface{}) context.Context {
@@ -191,20 +220,20 @@ func NewThrottlerKeyed(newthr NewThrottler) *tkeyed {
 	return &tkeyed{newthr: newthr}
 }
 
-func (thr *tkeyed) Acquire(ctx context.Context) error {
+func (thr *tkeyed) Acquire(ctx context.Context) (context.Context, error) {
 	if key := ctx.Value(gohaltctxkey); key != nil {
 		r, _ := thr.store.LoadOrStore(key, thr.newthr())
 		return r.(Throttler).Acquire(ctx)
 	}
-	return errors.New("keyed throttler can't find any key")
+	return ctx, errors.New("keyed throttler can't find any key")
 }
 
-func (thr *tkeyed) Release(ctx context.Context) error {
+func (thr *tkeyed) Release(ctx context.Context) (context.Context, error) {
 	if key := ctx.Value(gohaltctxkey); key != nil {
 		if r, ok := thr.store.Load(key); ok {
 			return r.(Throttler).Release(ctx)
 		}
-		return errors.New("throttler has nothing to release")
+		return ctx, errors.New("throttler has nothing to release")
 	}
-	return errors.New("keyed throttler can't find any key")
+	return ctx, errors.New("keyed throttler can't find any key")
 }
