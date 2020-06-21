@@ -107,48 +107,50 @@ func (thr *tatomic) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
-type tblocking struct {
+type tbuffered struct {
 	run chan struct{}
 }
 
-func NewThrottlerBlocking(max uint64) *tblocking {
-	return &tblocking{run: make(chan struct{}, max)}
+func NewThrottlerBlocking(size uint64) *tbuffered {
+	return &tbuffered{run: make(chan struct{}, size)}
 }
 
-func (thr *tblocking) Acquire(ctx context.Context) (context.Context, error) {
+func (thr *tbuffered) Acquire(ctx context.Context) (context.Context, error) {
 	thr.run <- struct{}{}
 	return ctx, nil
 }
 
-func (thr *tblocking) Release(ctx context.Context) (context.Context, error) {
+func (thr *tbuffered) Release(ctx context.Context) (context.Context, error) {
 	select {
 	case <-thr.run:
+	case <-ctx.Done():
+		return ctx, fmt.Errorf("throttler context error has occured %w", ctx.Err())
 	default:
 		return ctx, errors.New("throttler has nothing to release")
 	}
 	return ctx, nil
 }
 
-type tblockpriority struct {
+type tpriority struct {
 	run map[uint8]chan struct{}
 	max uint8
 	mut sync.Mutex
 }
 
-func NewThrottlerBlockingPriority(max uint64, priority uint8) *tblockpriority {
+func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 	if priority == 0 {
 		priority = 1
 	}
-	thr := tblockpriority{max: priority}
+	thr := tpriority{max: priority}
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
-	koef := uint64(math.Ceil(float64(max) / sum))
+	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
 		thr.run[i] = make(chan struct{}, uint64(i)*koef)
 	}
 	return &thr
 }
 
-func (thr *tblockpriority) Acquire(ctx context.Context) (context.Context, error) {
+func (thr *tpriority) Acquire(ctx context.Context) (context.Context, error) {
 	thr.mut.Lock()
 	run := thr.run[ctxPriority(ctx, thr.max)]
 	thr.mut.Unlock()
@@ -156,12 +158,14 @@ func (thr *tblockpriority) Acquire(ctx context.Context) (context.Context, error)
 	return ctx, nil
 }
 
-func (thr *tblockpriority) Release(ctx context.Context) (context.Context, error) {
+func (thr *tpriority) Release(ctx context.Context) (context.Context, error) {
 	thr.mut.Lock()
 	run := thr.run[ctxPriority(ctx, thr.max)]
 	thr.mut.Unlock()
 	select {
 	case <-run:
+	case <-ctx.Done():
+		return ctx, fmt.Errorf("throttler context error has occured %w", ctx.Err())
 	default:
 		return ctx, errors.New("throttler has nothing to release")
 	}
