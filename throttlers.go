@@ -19,16 +19,16 @@ type Throttler interface {
 
 type NewThrottler func() Throttler
 
-type each struct {
+type teach struct {
 	cur uint64
 	num uint64
 }
 
-func NewThrottlerEach(num uint64) *each {
-	return &each{num: num}
+func NewThrottlerEach(num uint64) *teach {
+	return &teach{num: num}
 }
 
-func (thr *each) Acquire(ctx context.Context) error {
+func (thr *teach) Acquire(ctx context.Context) error {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
 		return fmt.Errorf("throttler has reached periodic skip %d", cur)
@@ -36,20 +36,20 @@ func (thr *each) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *each) Release(ctx context.Context) error {
+func (thr *teach) Release(ctx context.Context) error {
 	return nil
 }
 
-type after struct {
+type tafter struct {
 	cur uint64
 	num uint64
 }
 
-func NewThrottlerAfter(num uint64) *after {
-	return &after{num: num}
+func NewThrottlerAfter(num uint64) *tafter {
+	return &tafter{num: num}
 }
 
-func (thr *after) Acquire(ctx context.Context) error {
+func (thr *tafter) Acquire(ctx context.Context) error {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur < thr.num {
 		return fmt.Errorf("throttler has not reached pass yet %d", cur)
@@ -57,7 +57,7 @@ func (thr *after) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *after) Release(ctx context.Context) error {
+func (thr *tafter) Release(ctx context.Context) error {
 	return nil
 }
 
@@ -185,6 +185,9 @@ func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, 
 	}
 	loop(ctx, interval, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.cur, ^uint64(delta-1))
+		if cur := atomic.LoadUint64(&thr.cur); cur < 0 {
+			atomic.StoreUint64(&thr.cur, 0)
+		}
 		return ctx.Err()
 	})
 	return ttimed{thr}
@@ -219,10 +222,8 @@ func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64
 func (thr tstats) Acquire(ctx context.Context) error {
 	alloc, system := thr.stats.MEM()
 	avgpause, usage := thr.stats.CPU()
-	if alloc >= thr.alloc ||
-		system >= thr.system ||
-		avgpause >= thr.avgpause ||
-		usage >= thr.usage {
+	if alloc >= thr.alloc || system >= thr.system ||
+		avgpause >= thr.avgpause || usage >= thr.usage {
 		return fmt.Errorf(
 			`throttler has exceed stats limits
 alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
@@ -391,17 +392,15 @@ func (thr *tkeyed) Release(ctx context.Context) error {
 	return errors.New("keyed throttler can't find any key")
 }
 
-type tall struct {
-	thrs []Throttler
-}
+type tall []Throttler
 
 func NewThrottlerAll(thrs []Throttler) tall {
-	return tall{thrs: thrs}
+	return tall(thrs)
 }
 
-func (thr tall) Acquire(ctx context.Context) error {
+func (thrs tall) Acquire(ctx context.Context) error {
 	var err error
-	for _, thr := range thr.thrs {
+	for _, thr := range thrs {
 		if threrr := thr.Acquire(ctx); threrr != nil {
 			err = fmt.Errorf("%w %w", err, threrr)
 			continue
@@ -411,9 +410,9 @@ func (thr tall) Acquire(ctx context.Context) error {
 	return err
 }
 
-func (thr tall) Release(ctx context.Context) error {
+func (thrs tall) Release(ctx context.Context) error {
 	err := errors.New("throttler error happened")
-	for _, thr := range thr.thrs {
+	for _, thr := range thrs {
 		if threrr := thr.Release(ctx); threrr != nil {
 			err = fmt.Errorf("%w %w", err, threrr)
 			continue
@@ -423,18 +422,16 @@ func (thr tall) Release(ctx context.Context) error {
 	return err
 }
 
-type tany struct {
-	thrs []Throttler
-}
+type tany []Throttler
 
 func NewThrottlerAny(thrs []Throttler) tany {
-	return tany{thrs: thrs}
+	return tany(thrs)
 }
 
-func (thr tany) Acquire(ctx context.Context) error {
+func (thrs tany) Acquire(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errs := make(chan error)
-	for _, thr := range thr.thrs {
+	for _, thr := range thrs {
 		wg.Add(1)
 		go func(thr Throttler) {
 			if err := thr.Acquire(ctx); err != nil {
@@ -454,10 +451,10 @@ func (thr tany) Acquire(ctx context.Context) error {
 	return err
 }
 
-func (thr tany) Release(ctx context.Context) error {
+func (thrs tany) Release(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errs := make(chan error)
-	for _, thr := range thr.thrs {
+	for _, thr := range thrs {
 		wg.Add(1)
 		go func(thr Throttler) {
 			if err := thr.Release(ctx); err != nil {
