@@ -506,3 +506,25 @@ func (thrs tany) Release(ctx context.Context) error {
 	close(errs)
 	return err
 }
+
+type trevert struct {
+	thr Throttler
+}
+
+func NewThrottlerRevert(thr Throttler) trevert {
+	return trevert{thr: thr}
+}
+
+func (thr trevert) Acquire(ctx context.Context) error {
+	if err := thr.thr.Acquire(ctx); err != nil {
+		return nil
+	}
+	return errors.New("throttler revert error happened")
+}
+
+func (thr trevert) Release(ctx context.Context) error {
+	if err := thr.thr.Release(ctx); err != nil {
+		return nil
+	}
+	return errors.New("throttler revert error happened")
+}
