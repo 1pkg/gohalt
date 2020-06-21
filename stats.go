@@ -20,11 +20,10 @@ type cachedstats struct {
 	avgusage float64
 }
 
-func NewCachedStats(ctx context.Context, duration time.Duration) *cachedstats {
+func NewCachedStats(ctx context.Context, duration time.Duration) (*cachedstats, error) {
 	s := &cachedstats{}
-	s.refresh(ctx)
-	loop(ctx, s.refresh, duration)
-	return s
+	loop(ctx, duration, s.refresh)
+	return s, s.refresh(ctx)
 }
 
 func (s cachedstats) MEM() (alloc uint64, system uint64) {
@@ -35,10 +34,10 @@ func (s cachedstats) CPU() (avgpause uint64, avgusage float64) {
 	return s.avgpause, s.avgusage
 }
 
-func (s *cachedstats) refresh(ctx context.Context) {
+func (s *cachedstats) refresh(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return
+		return ctx.Err()
 	default:
 	}
 	var stats runtime.MemStats
@@ -51,7 +50,7 @@ func (s *cachedstats) refresh(ctx context.Context) {
 	s.avgpause /= 256
 	select {
 	case <-ctx.Done():
-		return
+		return ctx.Err()
 	default:
 	}
 	if percents, err := cpu.Percent(10*time.Millisecond, true); err != nil {
@@ -60,4 +59,5 @@ func (s *cachedstats) refresh(ctx context.Context) {
 		}
 		s.avgusage /= float64(len(percents))
 	}
+	return nil
 }
