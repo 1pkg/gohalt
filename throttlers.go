@@ -1,6 +1,7 @@
 package gohalt
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -276,8 +277,7 @@ func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
 
 func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
 	if lat := atomic.LoadUint64(&thr.lat); lat < thr.max {
-		ts := ctxTimestamp(ctx)
-		lat := uint64(ts - time.Now().UTC().UnixNano())
+		lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 		if lat > thr.lat {
 			atomic.StoreUint64(&thr.lat, lat)
 		}
@@ -286,6 +286,53 @@ func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
 			return nil
 		})
 	}
+	return ctx, nil
+}
+
+type tquantile struct {
+	lat *latheap
+	mut sync.Mutex
+	qnt float64
+	max uint64
+	ret time.Duration
+}
+
+func NewThrottlerQuantile(max time.Duration, quantile float64, retention time.Duration) *tquantile {
+	quantile = math.Abs(quantile)
+	if quantile > 1.0 {
+		quantile = 1.0
+	}
+	return &tquantile{
+		lat: &latheap{},
+		max: uint64(max),
+		qnt: quantile,
+		ret: retention,
+	}
+}
+
+func (thr *tquantile) Acquire(ctx context.Context) (context.Context, error) {
+	thr.mut.Lock()
+	size := float64(thr.lat.Len())
+	pos := int(math.Round(size * thr.qnt))
+	lat := thr.lat.At(pos)
+	thr.mut.Unlock()
+	if lat > thr.max {
+		once(ctx, thr.ret, func(context.Context) error {
+			thr.mut.Lock()
+			thr.lat = &latheap{}
+			thr.mut.Unlock()
+			return nil
+		})
+		return ctx, fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
+	}
+	return withTimestamp(ctx), nil
+}
+
+func (thr *tquantile) Release(ctx context.Context) (context.Context, error) {
+	lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
+	thr.mut.Lock()
+	heap.Push(thr.lat, lat)
+	thr.mut.Unlock()
 	return ctx, nil
 }
 
