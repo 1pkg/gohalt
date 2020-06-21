@@ -342,3 +342,37 @@ func (thr *tkeyed) Release(ctx context.Context) (context.Context, error) {
 	}
 	return ctx, errors.New("keyed throttler can't find any key")
 }
+
+type tall struct {
+	thrs []Throttler
+}
+
+func NewThrottlerAll(thrs []Throttler) tall {
+	return tall{thrs: thrs}
+}
+
+func (thr tall) Acquire(ctx context.Context) (context.Context, error) {
+	var err error
+	for _, thr := range thr.thrs {
+		thrctx, threrr := thr.Acquire(ctx)
+		if threrr == nil {
+			return ctx, nil
+		}
+		err = fmt.Errorf("%w %w", err, threrr)
+		ctx = thrctx
+	}
+	return ctx, err
+}
+
+func (thr tall) Release(ctx context.Context) (context.Context, error) {
+	var err error
+	for _, thr := range thr.thrs {
+		thrctx, threrr := thr.Release(ctx)
+		if threrr == nil {
+			return ctx, nil
+		}
+		err = fmt.Errorf("%w %w", err, threrr)
+		ctx = thrctx
+	}
+	return ctx, err
+}
