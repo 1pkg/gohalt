@@ -109,17 +109,6 @@ func (thr *tblocking) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
-const gohaltctxpriority = "gohalt_context_priority"
-
-func priority(ctx context.Context, max uint8) uint8 {
-	if val := ctx.Value(gohaltctxpriority); val != nil {
-		if priority, ok := val.(uint8); ok && priority > 0 && priority <= max {
-			return priority
-		}
-	}
-	return 1
-}
-
 type tblockpriority struct {
 	run map[uint8]chan struct{}
 	max uint8
@@ -131,18 +120,17 @@ func NewThrottlerBlockingPriority(max uint64, priority uint8) *tblockpriority {
 		priority = 1
 	}
 	thr := tblockpriority{max: priority}
-	sum := priority / 2 * (2 + (priority - 1))
-	koef := max / uint64(sum)
+	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
+	koef := uint64(math.Ceil(float64(max) / sum))
 	for i := uint8(1); i <= priority; i++ {
-		slots := uint64(math.Ceil(float64(uint64(i) * koef)))
-		thr.run[i] = make(chan struct{}, slots)
+		thr.run[i] = make(chan struct{}, uint64(i)*koef)
 	}
 	return &thr
 }
 
 func (thr *tblockpriority) Acquire(ctx context.Context) (context.Context, error) {
 	thr.mut.Lock()
-	run := thr.run[priority(ctx, thr.max)]
+	run := thr.run[ctxPriority(ctx, thr.max)]
 	thr.mut.Unlock()
 	run <- struct{}{}
 	return ctx, nil
@@ -150,7 +138,7 @@ func (thr *tblockpriority) Acquire(ctx context.Context) (context.Context, error)
 
 func (thr *tblockpriority) Release(ctx context.Context) (context.Context, error) {
 	thr.mut.Lock()
-	run := thr.run[priority(ctx, thr.max)]
+	run := thr.run[ctxPriority(ctx, thr.max)]
 	thr.mut.Unlock()
 	select {
 	case <-run:
@@ -167,8 +155,9 @@ type ttimed struct {
 func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, quarter uint64) ttimed {
 	thr := NewThrottlerFixed(max)
 	delta, interval := max, duration
-	if quarter > 0 && quarter < uint64(duration) {
-		delta, interval = delta/quarter, interval/time.Duration(quarter)
+	if quarter > 0 && duration > time.Duration(quarter) {
+		delta = uint64(math.Ceil(float64(delta) / float64(quarter)))
+		interval /= time.Duration(quarter)
 	}
 	loop(ctx, interval, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.cur, ^uint64(delta-1))
@@ -226,8 +215,6 @@ func (thr tstats) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
-const gohaltctxlatency = "gohalt_context_latency"
-
 type tlatency struct {
 	lat uint64
 	max uint64
@@ -242,24 +229,20 @@ func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
 	if lat := atomic.LoadUint64(&thr.lat); lat > thr.max {
 		return ctx, fmt.Errorf("throttler max latency limit has been exceed %d", lat)
 	}
-	ctx = context.WithValue(ctx, gohaltctxlatency, time.Now().UTC().UnixNano())
-	return ctx, nil
+	return withTimestamp(ctx), nil
 }
 
 func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
 	if lat := atomic.LoadUint64(&thr.lat); lat < thr.max {
-		if lat := ctx.Value(gohaltctxlatency); lat != nil {
-			if ts, ok := lat.(int64); ok {
-				lat := uint64(ts - time.Now().UTC().UnixNano())
-				if lat > thr.lat {
-					atomic.StoreUint64(&thr.lat, lat)
-				}
-				once(ctx, thr.ret, func(context.Context) error {
-					atomic.StoreUint64(&thr.lat, 0)
-					return nil
-				})
-			}
+		ts := ctxTimestamp(ctx)
+		lat := uint64(ts - time.Now().UTC().UnixNano())
+		if lat > thr.lat {
+			atomic.StoreUint64(&thr.lat, lat)
 		}
+		once(ctx, thr.ret, func(context.Context) error {
+			atomic.StoreUint64(&thr.lat, 0)
+			return nil
+		})
 	}
 	return ctx, nil
 }
@@ -287,12 +270,6 @@ func (thr tcontext) Release(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 }
-
-func KeyedContext(ctx context.Context, key interface{}) context.Context {
-	return context.WithValue(ctx, gohaltctxkey, key)
-}
-
-const gohaltctxkey = "gohalt_context_key"
 
 type tkeyed struct {
 	store  sync.Map
