@@ -45,23 +45,23 @@ func (r *Runner) GoWithContext(ctx context.Context, run Runnable) {
 	go func() {
 		defer func() {
 			if err := r.thr.Release(ctx); err != nil {
-				r.rep(fmt.Errorf("throttler error happened %w", err))
+				r.rep(fmt.Errorf("throttler error has happened %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
 		if err := r.thr.Acquire(ctx); err != nil {
-			r.rep(fmt.Errorf("throttler error happened %w", err))
+			r.rep(fmt.Errorf("throttler error has happened %w", err))
 			return
 		}
 		select {
 		case <-ctx.Done():
-			r.rep(fmt.Errorf("context error happened %w", ctx.Err()))
+			r.rep(fmt.Errorf("context error has happened %w", ctx.Err()))
 			return
 		default:
 		}
 		if err := run(ctx); err != nil {
-			r.rep(fmt.Errorf("run error happened %w", err))
+			r.rep(fmt.Errorf("function error has happened %w", err))
 			return
 		}
 	}()
