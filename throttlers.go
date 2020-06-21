@@ -112,23 +112,13 @@ type ttimed struct {
 	*tfixed
 }
 
-func NewThrottlerTimed(max uint64, duration time.Duration, quarter uint64) ttimed {
+func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, quarter uint64) ttimed {
 	thr := NewThrottlerFixed(max)
-	if duration > 0 {
-		go func() {
-			delta, interval := max, duration
-			if quarter > 0 && quarter < uint64(duration) {
-				delta, interval = delta/quarter, interval/time.Duration(quarter)
-			}
-			delta = ^uint64(delta - 1)
-			tick := time.NewTicker(interval)
-			defer tick.Stop()
-			for {
-				<-tick.C
-				atomic.AddUint64(&thr.cur, delta)
-			}
-		}()
+	delta, interval := max, duration
+	if quarter > 0 && quarter < uint64(duration) {
+		delta, interval = delta/quarter, interval/time.Duration(quarter)
 	}
+	loop(ctx, func(context.Context) { atomic.AddUint64(&thr.cur, ^uint64(delta-1)) }, interval)
 	return ttimed{thr}
 }
 
