@@ -203,6 +203,30 @@ func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
+type tcontext struct{}
+
+func NewThrottlerContext() tcontext {
+	return tcontext{}
+}
+
+func (thr tcontext) Acquire(ctx context.Context) (context.Context, error) {
+	select {
+	case <-ctx.Done():
+		return ctx, fmt.Errorf("throttler context error occured %w", ctx.Err())
+	default:
+		return ctx, nil
+	}
+}
+
+func (thr tcontext) Release(ctx context.Context) (context.Context, error) {
+	select {
+	case <-ctx.Done():
+		return ctx, fmt.Errorf("throttler context error occured %w", ctx.Err())
+	default:
+		return ctx, nil
+	}
+}
+
 func KeyedContext(ctx context.Context, key interface{}) context.Context {
 	return context.WithValue(ctx, gohaltctxkey, key)
 }
