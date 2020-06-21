@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,7 +33,7 @@ func NewThrottlerEach(num uint64) *each {
 func (thr *each) Acquire(ctx context.Context) (context.Context, error) {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
-		return ctx, fmt.Errorf("throttler periodic skip has been reached %d", cur)
+		return ctx, fmt.Errorf("throttler has reached periodic skip %d", cur)
 	}
 	return ctx, nil
 }
@@ -53,7 +54,7 @@ func NewThrottlerAfter(num uint64) *after {
 func (thr *after) Acquire(ctx context.Context) (context.Context, error) {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur < thr.num {
-		return ctx, fmt.Errorf("throttler boundary has not been reached yet %d", cur)
+		return ctx, fmt.Errorf("throttler has not reached pass yet %d", cur)
 	}
 	return ctx, nil
 }
@@ -73,7 +74,7 @@ func NewThrottlerFixed(max uint64) *tfixed {
 
 func (thr *tfixed) Acquire(ctx context.Context) (context.Context, error) {
 	if cur := atomic.LoadUint64(&thr.cur); cur > thr.max {
-		return ctx, fmt.Errorf("throttler max fixed limit has been exceed %d", cur)
+		return ctx, fmt.Errorf("throttler has exceed fixed limit %d", cur)
 	}
 	atomic.AddUint64(&thr.cur, 1)
 	return ctx, nil
@@ -94,7 +95,7 @@ func NewThrottlerAtomic(max uint64) *tatomic {
 
 func (thr *tatomic) Acquire(ctx context.Context) (context.Context, error) {
 	if run := atomic.LoadUint64(&thr.run); run > thr.max {
-		return ctx, fmt.Errorf("throttler max running limit has been exceed %d", run)
+		return ctx, fmt.Errorf("throttler has exceed running limit %d", run)
 	}
 	atomic.AddUint64(&thr.run, 1)
 	return ctx, nil
@@ -221,8 +222,8 @@ func (thr tstats) Acquire(ctx context.Context) (context.Context, error) {
 		avgpause >= thr.avgpause ||
 		usage >= thr.usage {
 		return ctx, fmt.Errorf(
-			`throttler memory watermark limit has been exceed
-alloc %d mb, system %d mb, average collector pause %s, average cpu usafe %.2f%%`,
+			`throttler has exceed stats limits
+alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
 			alloc/1024,
 			system/1024,
 			time.Duration(avgpause),
@@ -233,6 +234,29 @@ alloc %d mb, system %d mb, average collector pause %s, average cpu usafe %.2f%%`
 }
 
 func (thr tstats) Release(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+type tchance struct {
+	pos float64
+}
+
+func NewThrottlerChance(possibillity float64) tchance {
+	possibillity = math.Abs(possibillity)
+	if possibillity > 1.0 {
+		possibillity = 1.0
+	}
+	return tchance{pos: possibillity}
+}
+
+func (thr tchance) Acquire(ctx context.Context) (context.Context, error) {
+	if thr.pos > 1.0-rand.Float64() {
+		return ctx, errors.New("throttler has missed a chance")
+	}
+	return ctx, nil
+}
+
+func (thr tchance) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
@@ -248,7 +272,7 @@ func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
 
 func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
 	if lat := atomic.LoadUint64(&thr.lat); lat > thr.max {
-		return ctx, fmt.Errorf("throttler max latency limit has been exceed %d", lat)
+		return ctx, fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
 	}
 	return withTimestamp(ctx), nil
 }
@@ -277,7 +301,7 @@ func NewThrottlerContext() tcontext {
 func (thr tcontext) Acquire(ctx context.Context) (context.Context, error) {
 	select {
 	case <-ctx.Done():
-		return ctx, fmt.Errorf("throttler context error occured %w", ctx.Err())
+		return ctx, fmt.Errorf("throttler context error has occured %w", ctx.Err())
 	default:
 		return ctx, nil
 	}
@@ -286,7 +310,7 @@ func (thr tcontext) Acquire(ctx context.Context) (context.Context, error) {
 func (thr tcontext) Release(ctx context.Context) (context.Context, error) {
 	select {
 	case <-ctx.Done():
-		return ctx, fmt.Errorf("throttler context error occured %w", ctx.Err())
+		return ctx, fmt.Errorf("throttler context error has occured %w", ctx.Err())
 	default:
 		return ctx, nil
 	}
@@ -306,7 +330,7 @@ func (thr *tkeyed) Acquire(ctx context.Context) (context.Context, error) {
 		r, _ := thr.store.LoadOrStore(key, thr.newthr())
 		return r.(Throttler).Acquire(ctx)
 	}
-	return ctx, errors.New("keyed throttler can't find any key")
+	return ctx, errors.New("keyed throttler can't the key")
 }
 
 func (thr *tkeyed) Release(ctx context.Context) (context.Context, error) {
