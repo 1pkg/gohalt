@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"sync"
@@ -49,6 +50,21 @@ func (thr twait) Acquire(ctx context.Context) error {
 }
 
 func (thr twait) Release(ctx context.Context) error {
+	return nil
+}
+
+type tpanic struct{}
+
+func NewThrottlerPanic() tpanic {
+	return tpanic{}
+}
+
+func (thr tpanic) Acquire(ctx context.Context) error {
+	log.Fatal("throttler panic has happened")
+	return nil
+}
+
+func (thr tpanic) Release(ctx context.Context) error {
 	return nil
 }
 
@@ -444,7 +460,7 @@ func (thrs tall) Acquire(ctx context.Context) error {
 }
 
 func (thrs tall) Release(ctx context.Context) error {
-	err := errors.New("throttler error happened")
+	err := errors.New("throttler error has happened")
 	for _, thr := range thrs {
 		if threrr := thr.Release(ctx); threrr != nil {
 			err = fmt.Errorf("%w %w", err, threrr)
@@ -473,7 +489,7 @@ func (thrs tany) Acquire(ctx context.Context) error {
 			wg.Done()
 		}(thr)
 	}
-	err := errors.New("throttler error happened")
+	err := errors.New("throttler error has happened")
 	go func() {
 		for threrr := range errs {
 			err = fmt.Errorf("%w\n%w", err, threrr)
@@ -496,7 +512,7 @@ func (thrs tany) Release(ctx context.Context) error {
 			wg.Done()
 		}(thr)
 	}
-	err := errors.New("throttler error happened")
+	err := errors.New("throttler error has happened")
 	go func() {
 		for threrr := range errs {
 			err = fmt.Errorf("%w\n%w", err, threrr)
@@ -519,12 +535,12 @@ func (thr trevert) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler revert error happened")
+	return errors.New("throttler revert error has happened")
 }
 
 func (thr trevert) Release(ctx context.Context) error {
 	if err := thr.thr.Release(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler revert error happened")
+	return errors.New("throttler revert error has happened")
 }
