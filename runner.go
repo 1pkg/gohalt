@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 )
 
 type Runnable func(context.Context) error
@@ -44,7 +43,7 @@ func NewRunnerWithLogger(ctx context.Context, thr Throttler, log Logger) *Runner
 func (r *Runner) Go(run Runnable, key interface{}) {
 	r.wg.Add(1)
 	go func() {
-		ctx := KeyedContext(r.ctx, key)
+		ctx := WithKey(r.ctx, key)
 		defer func() {
 			if _, err := r.thr.Release(ctx); err != nil {
 				r.report(fmt.Errorf("throttler error happened: %w", err))
@@ -75,30 +74,4 @@ func (r *Runner) Wait() error {
 	r.wg.Wait()
 	r.report(nil)
 	return r.err
-}
-
-func loop(ctx context.Context, duration time.Duration, run Runnable) {
-	if duration > 0 {
-		go func() {
-			tick := time.NewTicker(duration)
-			defer tick.Stop()
-			for {
-				<-tick.C
-				if err := run(ctx); err != nil {
-					return
-				}
-			}
-		}()
-	}
-}
-
-func once(ctx context.Context, duration time.Duration, run Runnable) {
-	if duration > 0 {
-		go func() {
-			tick := time.NewTicker(duration)
-			defer tick.Stop()
-			<-tick.C
-			run(ctx)
-		}()
-	}
 }
