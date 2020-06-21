@@ -17,17 +17,19 @@ type cachedstats struct {
 	usage    float64
 }
 
-func NewCachedStats(d time.Duration) *cachedstats {
+func NewCachedStats(duration time.Duration) *cachedstats {
 	s := &cachedstats{}
 	s.refresh()
-	go func() {
-		tick := time.NewTicker(d)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			s.refresh()
-		}
-	}()
+	if duration > 0 {
+		go func() {
+			tick := time.NewTicker(duration)
+			defer tick.Stop()
+			for {
+				<-tick.C
+				s.refresh()
+			}
+		}()
+	}
 	return s
 }
 
