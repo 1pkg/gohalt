@@ -32,12 +32,33 @@ func NewThrottlerEach(num uint64) *each {
 func (thr *each) Acquire(ctx context.Context) (context.Context, error) {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
-		return ctx, fmt.Errorf("throttler skip has been reached %d", cur)
+		return ctx, fmt.Errorf("throttler periodic skip has been reached %d", cur)
 	}
 	return ctx, nil
 }
 
 func (thr *each) Release(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+type after struct {
+	cur uint64
+	num uint64
+}
+
+func NewThrottlerAfter(num uint64) *after {
+	return &after{num: num}
+}
+
+func (thr *after) Acquire(ctx context.Context) (context.Context, error) {
+	atomic.AddUint64(&thr.cur, 1)
+	if cur := atomic.LoadUint64(&thr.cur); cur < thr.num {
+		return ctx, fmt.Errorf("throttler boundary has not been reached yet %d", cur)
+	}
+	return ctx, nil
+}
+
+func (thr *after) Release(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
