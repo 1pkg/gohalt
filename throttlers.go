@@ -118,7 +118,10 @@ func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, 
 	if quarter > 0 && quarter < uint64(duration) {
 		delta, interval = delta/quarter, interval/time.Duration(quarter)
 	}
-	loop(ctx, func(context.Context) { atomic.AddUint64(&thr.cur, ^uint64(delta-1)) }, interval)
+	loop(ctx, interval, func(ctx context.Context) error {
+		atomic.AddUint64(&thr.cur, ^uint64(delta-1))
+		return ctx.Err()
+	})
 	return ttimed{thr}
 }
 
@@ -175,10 +178,11 @@ const gohaltctxlatency = "gohalt_context_latency"
 type tlatency struct {
 	lat uint64
 	max uint64
+	ret time.Duration
 }
 
-func NewThrottlerLatency(max time.Duration) *tlatency {
-	return &tlatency{max: uint64(max)}
+func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
+	return &tlatency{max: uint64(max), ret: retention}
 }
 
 func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
@@ -197,6 +201,10 @@ func (thr *tlatency) Release(ctx context.Context) (context.Context, error) {
 				if lat > thr.lat {
 					atomic.StoreUint64(&thr.lat, lat)
 				}
+				once(ctx, thr.ret, func(context.Context) error {
+					atomic.StoreUint64(&thr.lat, 0)
+					return nil
+				})
 			}
 		}
 	}
