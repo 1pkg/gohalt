@@ -19,6 +19,22 @@ type Throttler interface {
 
 type NewThrottler func() Throttler
 
+type techo struct {
+	err error
+}
+
+func NewThrottlerEcho(err error) techo {
+	return techo{err: err}
+}
+
+func (thr techo) Acquire(ctx context.Context) error {
+	return thr.err
+}
+
+func (thr techo) Release(ctx context.Context) error {
+	return thr.err
+}
+
 type teach struct {
 	cur uint64
 	num uint64
