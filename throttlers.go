@@ -24,6 +24,10 @@ type each struct {
 	num uint64
 }
 
+func NewThrottlerEach(num uint64) *each {
+	return &each{num: num}
+}
+
 func (thr *each) Acquire(ctx context.Context) (context.Context, error) {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
@@ -181,6 +185,10 @@ const gohaltctxlatency = "gohalt_context_latency"
 type tlatency struct {
 	lat uint64
 	max uint64
+}
+
+func NewThrottlerLatency(max time.Duration) *tlatency {
+	return &tlatency{max: uint64(max)}
 }
 
 func (thr tlatency) Acquire(ctx context.Context) (context.Context, error) {
