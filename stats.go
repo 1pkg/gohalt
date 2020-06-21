@@ -1,6 +1,7 @@
 package gohalt
 
 import (
+	"context"
 	"runtime"
 	"time"
 
@@ -19,19 +20,10 @@ type cachedstats struct {
 	avgusage float64
 }
 
-func NewCachedStats(duration time.Duration) *cachedstats {
+func NewCachedStats(ctx context.Context, duration time.Duration) *cachedstats {
 	s := &cachedstats{}
-	s.refresh()
-	if duration > 0 {
-		go func() {
-			tick := time.NewTicker(duration)
-			defer tick.Stop()
-			for {
-				<-tick.C
-				s.refresh()
-			}
-		}()
-	}
+	s.refresh(ctx)
+	loop(ctx, s.refresh, duration)
 	return s
 }
 
@@ -43,7 +35,12 @@ func (s cachedstats) CPU() (avgpause uint64, avgusage float64) {
 	return s.avgpause, s.avgusage
 }
 
-func (s *cachedstats) refresh() {
+func (s *cachedstats) refresh(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	s.alloc = stats.Alloc
@@ -52,6 +49,11 @@ func (s *cachedstats) refresh() {
 		s.avgpause += p
 	}
 	s.avgpause /= 256
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	if percents, err := cpu.Percent(10*time.Millisecond, true); err != nil {
 		for _, p := range percents {
 			s.avgusage += p

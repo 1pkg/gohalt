@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Runnable func(context.Context) error
@@ -74,4 +75,17 @@ func (r *Runner) Wait() error {
 	r.wg.Wait()
 	r.report(nil)
 	return r.err
+}
+
+func loop(ctx context.Context, call func(context.Context), duration time.Duration) {
+	if duration > 0 {
+		go func() {
+			tick := time.NewTicker(duration)
+			defer tick.Stop()
+			for {
+				<-tick.C
+				call(ctx)
+			}
+		}()
+	}
 }
