@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -102,6 +103,57 @@ func (thr *tblocking) Acquire(ctx context.Context) (context.Context, error) {
 func (thr *tblocking) Release(ctx context.Context) (context.Context, error) {
 	select {
 	case <-thr.run:
+	default:
+		return ctx, errors.New("throttler has nothing to release")
+	}
+	return ctx, nil
+}
+
+const gohaltctxpriority = "gohalt_context_priority"
+
+func priority(ctx context.Context, max uint8) uint8 {
+	if val := ctx.Value(gohaltctxpriority); val != nil {
+		if priority, ok := val.(uint8); ok && priority > 0 && priority <= max {
+			return priority
+		}
+	}
+	return 1
+}
+
+type tblockpriority struct {
+	run map[uint8]chan struct{}
+	max uint8
+	mut sync.Mutex
+}
+
+func NewThrottlerBlockingPriority(max uint64, priority uint8) *tblockpriority {
+	if priority == 0 {
+		priority = 1
+	}
+	thr := tblockpriority{max: priority}
+	sum := priority / 2 * (2 + (priority - 1))
+	koef := max / uint64(sum)
+	for i := uint8(1); i <= priority; i++ {
+		slots := uint64(math.Ceil(float64(uint64(i) * koef)))
+		thr.run[i] = make(chan struct{}, slots)
+	}
+	return &thr
+}
+
+func (thr *tblockpriority) Acquire(ctx context.Context) (context.Context, error) {
+	thr.mut.Lock()
+	run := thr.run[priority(ctx, thr.max)]
+	thr.mut.Unlock()
+	run <- struct{}{}
+	return ctx, nil
+}
+
+func (thr *tblockpriority) Release(ctx context.Context) (context.Context, error) {
+	thr.mut.Lock()
+	run := thr.run[priority(ctx, thr.max)]
+	thr.mut.Unlock()
+	select {
+	case <-run:
 	default:
 		return ctx, errors.New("throttler has nothing to release")
 	}
