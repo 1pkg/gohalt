@@ -35,6 +35,23 @@ func (thr techo) Release(ctx context.Context) error {
 	return thr.err
 }
 
+type twait struct {
+	slp time.Duration
+}
+
+func NewThrottlerWait(duration time.Duration) twait {
+	return twait{slp: duration}
+}
+
+func (thr twait) Acquire(ctx context.Context) error {
+	time.Sleep(thr.slp)
+	return nil
+}
+
+func (thr twait) Release(ctx context.Context) error {
+	return nil
+}
+
 type teach struct {
 	cur uint64
 	num uint64
