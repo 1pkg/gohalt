@@ -11,6 +11,64 @@ const (
 	gohaltctxpriority  = "gohalt_context_priority"
 )
 
+type ctxerr struct {
+	ctx context.Context
+	err error
+}
+
+type multi []context.Context
+
+func (m multi) Deadline() (deadline time.Time, ok bool) {
+	for _, ctx := range m {
+		if deadline, ok = ctx.Deadline(); ok {
+			return
+		}
+	}
+	return
+}
+
+func (m multi) Done() <-chan struct{} {
+	for _, ctx := range m {
+		done := ctx.Done()
+		select {
+		case <-done:
+			return done
+		default:
+		}
+	}
+	// for default case
+	// we need wait for any chan
+	done := make(chan struct{})
+	for _, ctx := range m {
+		go func(ctx context.Context) {
+			select {
+			case <-ctx.Done():
+				close(done)
+			case <-done:
+			}
+		}(ctx)
+	}
+	return done
+}
+
+func (m multi) Err() error {
+	for _, ctx := range m {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m multi) Value(key interface{}) interface{} {
+	for _, ctx := range m {
+		if val := ctx.Value(key); val != nil {
+			return val
+		}
+	}
+	return nil
+}
+
 func WithKey(ctx context.Context, key interface{}) context.Context {
 	return context.WithValue(ctx, gohaltctxkey, key)
 }

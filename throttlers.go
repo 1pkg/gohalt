@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// Throttler defines main interfaces
-// for all derived throttlers, and
-// defines main throttling lock/unlock flows.
 type Throttler interface {
 	Acquire(context.Context) (context.Context, error)
 	Release(context.Context) (context.Context, error)
@@ -365,14 +362,68 @@ func (thr tall) Acquire(ctx context.Context) (context.Context, error) {
 }
 
 func (thr tall) Release(ctx context.Context) (context.Context, error) {
-	var err error
+	err := errors.New("throttler error happened")
 	for _, thr := range thr.thrs {
 		thrctx, threrr := thr.Release(ctx)
 		if threrr == nil {
 			return ctx, nil
 		}
-		err = fmt.Errorf("%w %w", err, threrr)
+		err = fmt.Errorf("%w\n%w", err, threrr)
 		ctx = thrctx
 	}
+	return ctx, err
+}
+
+type tany struct {
+	thrs []Throttler
+}
+
+func NewThrottlerAny(thrs []Throttler) tany {
+	return tany{thrs: thrs}
+}
+
+func (thr tany) Acquire(ctx context.Context) (context.Context, error) {
+	var wg sync.WaitGroup
+	results := make(chan ctxerr)
+	for _, thr := range thr.thrs {
+		wg.Add(1)
+		go func(thr Throttler) {
+			ctx, err := thr.Acquire(ctx)
+			results <- ctxerr{ctx: ctx, err: err}
+			wg.Done()
+		}(thr)
+	}
+	mctx, err := multi{}, errors.New("throttler error happened")
+	go func() {
+		for result := range results {
+			mctx = append(mctx, result.ctx)
+			err = fmt.Errorf("%w\n%w", err, result.err)
+		}
+	}()
+	wg.Wait()
+	close(results)
+	return ctx, err
+}
+
+func (thr tany) Release(ctx context.Context) (context.Context, error) {
+	var wg sync.WaitGroup
+	results := make(chan ctxerr)
+	for _, thr := range thr.thrs {
+		wg.Add(1)
+		go func(thr Throttler) {
+			ctx, err := thr.Release(ctx)
+			results <- ctxerr{ctx: ctx, err: err}
+			wg.Done()
+		}(thr)
+	}
+	mctx, err := multi{}, errors.New("throttler error happened")
+	go func() {
+		for result := range results {
+			mctx = append(mctx, result.ctx)
+			err = fmt.Errorf("%w\n%w", err, result.err)
+		}
+	}()
+	wg.Wait()
+	close(results)
 	return ctx, err
 }

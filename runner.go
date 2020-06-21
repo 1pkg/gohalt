@@ -46,25 +46,25 @@ func (r *Runner) Go(run Runnable, key interface{}) {
 		ctx := WithKey(r.ctx, key)
 		defer func() {
 			if _, err := r.thr.Release(ctx); err != nil {
-				r.report(fmt.Errorf("throttler error happened: %w", err))
+				r.report(fmt.Errorf("throttler error happened %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
 		if thrctx, err := r.thr.Acquire(ctx); err != nil {
-			r.report(fmt.Errorf("throttler error happened: %w", err))
+			r.report(fmt.Errorf("throttler error happened %w", err))
 			return
 		} else {
 			ctx = thrctx
 		}
 		select {
 		case <-ctx.Done():
-			r.report(fmt.Errorf("context error happened: %w", ctx.Err()))
+			r.report(fmt.Errorf("context error happened %w", ctx.Err()))
 			return
 		default:
 		}
 		if err := run(ctx); err != nil {
-			r.report(fmt.Errorf("run error happened: %w", err))
+			r.report(fmt.Errorf("run error happened %w", err))
 			return
 		}
 	}()
