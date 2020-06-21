@@ -160,10 +160,11 @@ func (thr tstats) Acquire(ctx context.Context) (context.Context, error) {
 		usage >= thr.usage {
 		return ctx, fmt.Errorf(
 			`throttler memory watermark limit has been exceed
-alloc %d mb, system %d mb, average collector pause %s`,
+alloc %d mb, system %d mb, average collector pause %s, average cpu usafe %.2f%%`,
 			alloc/1024,
 			system/1024,
 			time.Duration(avgpause),
+			usage,
 		)
 	}
 	return ctx, nil
