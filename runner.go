@@ -18,7 +18,7 @@ type Runner struct {
 	err error
 }
 
-func NewRunner(ctx context.Context, thr Throttler) *Runner {
+func NewRunner(ctx context.Context, thr Throttler) (*Runner, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	r := Runner{thr: thr, ctx: ctx}
 	var once sync.Once
@@ -28,25 +28,31 @@ func NewRunner(ctx context.Context, thr Throttler) *Runner {
 			cancel()
 		})
 	}
-	return &r
+	return &r, ctx
 }
 
-func (r *Runner) Go(run Runnable, key interface{}) {
+func (r *Runner) Go(run Runnable) {
+	r.GoWithContext(r.ctx, run)
+}
+
+func (r *Runner) GoWithParams(run Runnable, priority uint8, key interface{}) {
+	ctx := WithThrottling(r.ctx, priority, key)
+	r.GoWithContext(ctx, run)
+}
+
+func (r *Runner) GoWithContext(ctx context.Context, run Runnable) {
 	r.wg.Add(1)
 	go func() {
-		ctx := WithKey(r.ctx, key)
 		defer func() {
-			if _, err := r.thr.Release(ctx); err != nil {
+			if err := r.thr.Release(ctx); err != nil {
 				r.rep(fmt.Errorf("throttler error happened %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
-		if thrctx, err := r.thr.Acquire(ctx); err != nil {
+		if err := r.thr.Acquire(ctx); err != nil {
 			r.rep(fmt.Errorf("throttler error happened %w", err))
 			return
-		} else {
-			ctx = thrctx
 		}
 		select {
 		case <-ctx.Done():
