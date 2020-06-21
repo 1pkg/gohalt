@@ -326,7 +326,7 @@ func NewThrottlerKeyed(newthr NewThrottler) *tkeyed {
 }
 
 func (thr *tkeyed) Acquire(ctx context.Context) (context.Context, error) {
-	if key := ctx.Value(gohaltctxkey); key != nil {
+	if key := ctxKey(ctx); key != nil {
 		r, _ := thr.store.LoadOrStore(key, thr.newthr())
 		return r.(Throttler).Acquire(ctx)
 	}
@@ -334,7 +334,7 @@ func (thr *tkeyed) Acquire(ctx context.Context) (context.Context, error) {
 }
 
 func (thr *tkeyed) Release(ctx context.Context) (context.Context, error) {
-	if key := ctx.Value(gohaltctxkey); key != nil {
+	if key := ctxKey(ctx); key != nil {
 		if r, ok := thr.store.Load(key); ok {
 			return r.(Throttler).Release(ctx)
 		}
