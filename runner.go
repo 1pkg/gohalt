@@ -40,30 +40,30 @@ func NewRunnerWithLogger(ctx context.Context, thr Throttler, log Logger) *Runner
 	return &r
 }
 
-func (r *Runner) Go(run Runnable) {
+func (r *Runner) Go(run Runnable, key interface{}) {
 	r.wg.Add(1)
 	go func() {
-		var thrcxt context.Context
+		ctx := KeyedContext(r.ctx, key)
 		defer func() {
-			if _, err := r.thr.Release(thrcxt); err != nil {
+			if _, err := r.thr.Release(ctx); err != nil {
 				r.report(fmt.Errorf("throttler error happened: %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
-		if ctx, err := r.thr.Acquire(r.ctx); err != nil {
+		if thrctx, err := r.thr.Acquire(ctx); err != nil {
 			r.report(fmt.Errorf("throttler error happened: %w", err))
 			return
 		} else {
-			thrcxt = ctx
+			ctx = thrctx
 		}
 		select {
-		case <-r.ctx.Done():
-			r.report(fmt.Errorf("context error happened: %w", r.ctx.Err()))
+		case <-ctx.Done():
+			r.report(fmt.Errorf("context error happened: %w", ctx.Err()))
 			return
 		default:
 		}
-		if err := run(r.ctx); err != nil {
+		if err := run(ctx); err != nil {
 			r.report(fmt.Errorf("run error happened: %w", err))
 			return
 		}
