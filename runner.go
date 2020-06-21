@@ -43,16 +43,19 @@ func NewRunnerWithLogger(ctx context.Context, thr Throttler, log Logger) *Runner
 func (r *Runner) Go(run Runnable) {
 	r.wg.Add(1)
 	go func() {
+		var thrcxt context.Context
 		defer func() {
-			if err := r.thr.Release(r.ctx); err != nil {
+			if _, err := r.thr.Release(thrcxt); err != nil {
 				r.report(fmt.Errorf("throttler error happened: %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
-		if err := r.thr.Acquire(r.ctx); err != nil {
+		if ctx, err := r.thr.Acquire(r.ctx); err != nil {
 			r.report(fmt.Errorf("throttler error happened: %w", err))
 			return
+		} else {
+			thrcxt = ctx
 		}
 		select {
 		case <-r.ctx.Done():
