@@ -269,8 +269,7 @@ func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64
 }
 
 func (thr tstats) Acquire(ctx context.Context) error {
-	alloc, system := thr.stats.MEM()
-	avgpause, usage := thr.stats.CPU()
+	alloc, system, avgpause, usage := thr.stats.Stats()
 	if alloc >= thr.alloc || system >= thr.system ||
 		avgpause >= thr.avgpause || usage >= thr.usage {
 		return fmt.Errorf(
