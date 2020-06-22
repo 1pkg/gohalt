@@ -20,45 +20,37 @@ type amqpp struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
 
+	pool time.Duration
 	url  string
 	que  string
 	exch string
 }
 
-func NewPublisherJsonAmqp(url string, queue string) (*amqpp, error) {
+func NewPublisherJsonAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
 	uuid++
 	exchange := fmt.Sprintf("gohalt_exchange_%d", uuid)
-	conn, err := amqp.Dial(url)
-	if err != nil {
+	enq := &amqpp{pool: pool, url: url, que: queue, exch: exchange}
+	if err := enq.connect(); err != nil {
 		return nil, err
 	}
-	ch, err := conn.Channel()
-	if err := ch.ExchangeDeclare(exchange, "direct", true, true, false, false, nil); err != nil {
-		return nil, err
-	}
-	if _, err := ch.QueueDeclare(queue, true, false, false, false, nil); err != nil {
-		return nil, err
-	}
-	if err := ch.QueueBind(queue, queue, exchange, false, nil); err != nil {
-		return nil, err
-	}
-	return &amqpp{
-		conn: conn,
-		ch:   ch,
-		url:  url,
-		que:  queue,
-		exch: exchange,
-	}, nil
+	loop(ctx, pool, func(ctx context.Context) error {
+		if err := enq.Close(); err != nil {
+			return err
+		}
+		enq.connect()
+		return ctx.Err()
+	})
+	return enq, nil
 }
 
-func (p *amqpp) Publish(ctx context.Context, data interface{}) error {
+func (enq *amqpp) Publish(ctx context.Context, data interface{}) error {
 	body, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	return p.ch.Publish(
-		p.exch,
-		p.que,
+	return enq.ch.Publish(
+		enq.exch,
+		enq.que,
 		false,
 		false,
 		amqp.Publishing{
@@ -72,9 +64,27 @@ func (p *amqpp) Publish(ctx context.Context, data interface{}) error {
 	)
 }
 
-func (p *amqpp) Close() error {
-	if err := p.ch.Close(); err != nil {
+func (enq *amqpp) Close() error {
+	if err := enq.ch.Close(); err != nil {
 		return err
 	}
-	return p.conn.Close()
+	return enq.conn.Close()
+}
+
+func (enq *amqpp) connect() error {
+	conn, err := amqp.Dial(enq.url)
+	if err != nil {
+		return err
+	}
+	ch, err := conn.Channel()
+	if err := ch.ExchangeDeclare(enq.exch, "direct", true, true, false, false, nil); err != nil {
+		return err
+	}
+	if _, err := ch.QueueDeclare(enq.que, true, false, false, false, nil); err != nil {
+		return err
+	}
+	if err := ch.QueueBind(enq.que, enq.que, enq.exch, false, nil); err != nil {
+		return err
+	}
+	return nil
 }
