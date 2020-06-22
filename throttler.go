@@ -37,15 +37,15 @@ func (thr techo) Release(ctx context.Context) error {
 }
 
 type twait struct {
-	slp time.Duration
+	dur time.Duration
 }
 
 func NewThrottlerWait(duration time.Duration) twait {
-	return twait{slp: duration}
+	return twait{dur: duration}
 }
 
 func (thr twait) Acquire(ctx context.Context) error {
-	time.Sleep(thr.slp)
+	time.Sleep(thr.dur)
 	return nil
 }
 
@@ -182,7 +182,7 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 
 type tpriority struct {
 	run map[uint8]chan struct{}
-	max uint8
+	prt uint8
 	mut sync.Mutex
 }
 
@@ -190,7 +190,7 @@ func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 	if priority == 0 {
 		priority = 1
 	}
-	thr := tpriority{max: priority}
+	thr := tpriority{prt: priority}
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
@@ -201,7 +201,7 @@ func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 
 func (thr *tpriority) Acquire(ctx context.Context) error {
 	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.max)]
+	run := thr.run[ctxPriority(ctx, thr.prt)]
 	thr.mut.Unlock()
 	run <- struct{}{}
 	return nil
@@ -209,7 +209,7 @@ func (thr *tpriority) Acquire(ctx context.Context) error {
 
 func (thr *tpriority) Release(ctx context.Context) error {
 	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.max)]
+	run := thr.run[ctxPriority(ctx, thr.prt)]
 	thr.mut.Unlock()
 	select {
 	case <-run:
@@ -223,14 +223,16 @@ func (thr *tpriority) Release(ctx context.Context) error {
 
 type ttimed struct {
 	*tfixed
+	wnd time.Duration
+	sld uint64
 }
 
-func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, quarter uint64) ttimed {
+func NewThrottlerTimed(ctx context.Context, max uint64, window time.Duration, slide uint64) ttimed {
 	thr := NewThrottlerFixed(max)
-	delta, interval := max, duration
-	if quarter > 0 && duration > time.Duration(quarter) {
-		delta = uint64(math.Ceil(float64(delta) / float64(quarter)))
-		interval /= time.Duration(quarter)
+	delta, interval := max, window
+	if slide > 0 && window > time.Duration(slide) {
+		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
+		interval /= time.Duration(slide)
 	}
 	loop(ctx, interval, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.cur, ^uint64(delta-1))
@@ -239,7 +241,7 @@ func NewThrottlerTimed(ctx context.Context, max uint64, duration time.Duration, 
 		}
 		return ctx.Err()
 	})
-	return ttimed{thr}
+	return ttimed{tfixed: thr, wnd: window, sld: slide}
 }
 
 func (thr ttimed) Acquire(ctx context.Context) error {
@@ -255,23 +257,23 @@ type tstats struct {
 	alloc    uint64
 	system   uint64
 	avgpause uint64
-	usage    float64
+	avgusage float64
 }
 
-func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64, usage float64) tstats {
+func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64, avgusage float64) tstats {
 	return tstats{
 		stats:    stats,
 		alloc:    alloc,
 		system:   system,
 		avgpause: avgpause,
-		usage:    usage,
+		avgusage: avgusage,
 	}
 }
 
 func (thr tstats) Acquire(ctx context.Context) error {
 	alloc, system, avgpause, usage := thr.stats.Stats()
 	if alloc >= thr.alloc || system >= thr.system ||
-		avgpause >= thr.avgpause || usage >= thr.usage {
+		avgpause >= thr.avgpause || usage >= thr.avgusage {
 		return fmt.Errorf(
 			`throttler has exceed stats limits
 alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
@@ -345,8 +347,8 @@ func (thr *tlatency) Release(ctx context.Context) error {
 type tquantile struct {
 	lat *latheap
 	mut sync.Mutex
-	qnt float64
 	max uint64
+	qnt float64
 	ret time.Duration
 }
 
