@@ -2,7 +2,6 @@ package gohalt
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 )
 
@@ -13,18 +12,6 @@ const (
 	gohaltctxtimestamp = "gohalt_context_timestamp"
 	gohaltctxmarshaler = "gohalt_context_marshaler"
 )
-
-type Marshaler func(interface{}) ([]byte, error)
-
-var DefaultMarshaler Marshaler = json.Marshal
-
-func WithThrottling(ctx context.Context, priority uint8, key interface{}, data interface{}) context.Context {
-	ctx = WithPriority(ctx, priority)
-	ctx = WithKey(ctx, key)
-	ctx = WithData(ctx, data)
-	ctx = WithTimestamp(ctx)
-	return ctx
-}
 
 func WithPriority(ctx context.Context, priority uint8) context.Context {
 	if priority == 0 {
