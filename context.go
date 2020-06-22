@@ -6,14 +6,16 @@ import (
 )
 
 const (
-	gohaltctxkey       = "gohalt_context_key"
-	gohaltctxtimestamp = "gohalt_context_timestampy"
 	gohaltctxpriority  = "gohalt_context_priority"
+	gohaltctxkey       = "gohalt_context_key"
+	gohaltctxdata      = "gohalt_context_data"
+	gohaltctxtimestamp = "gohalt_context_timestampy"
 )
 
-func WithThrottling(ctx context.Context, priority uint8, key interface{}) context.Context {
+func WithThrottling(ctx context.Context, priority uint8, key interface{}, data interface{}) context.Context {
 	ctx = WithPriority(ctx, priority)
 	ctx = WithKey(ctx, key)
+	ctx = WithData(ctx, data)
 	ctx = WithTimestamp(ctx)
 	return ctx
 }
@@ -40,6 +42,14 @@ func WithKey(ctx context.Context, key interface{}) context.Context {
 
 func ctxKey(ctx context.Context) interface{} {
 	return ctx.Value(gohaltctxkey)
+}
+
+func WithData(ctx context.Context, data interface{}) context.Context {
+	return context.WithValue(ctx, gohaltctxdata, data)
+}
+
+func ctxData(ctx context.Context) interface{} {
+	return ctx.Value(gohaltctxdata)
 }
 
 func WithTimestamp(ctx context.Context) context.Context {

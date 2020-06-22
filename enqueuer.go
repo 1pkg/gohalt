@@ -2,15 +2,17 @@ package gohalt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/streadway/amqp"
 )
 
 var uuid uint64
 
-type Publisher interface {
-	Publish(context.Context, []byte) error
+type Enqueuer interface {
+	Publish(context.Context, interface{}) error
 	Close() error
 }
 
@@ -23,7 +25,7 @@ type amqpp struct {
 	exch string
 }
 
-func NewPublisherAmqp(url string, queue string) (*amqpp, error) {
+func NewPublisherJsonAmqp(url string, queue string) (*amqpp, error) {
 	uuid++
 	exchange := fmt.Sprintf("gohalt_exchange_%d", uuid)
 	conn, err := amqp.Dial(url)
@@ -49,13 +51,24 @@ func NewPublisherAmqp(url string, queue string) (*amqpp, error) {
 	}, nil
 }
 
-func (p *amqpp) Publish(ctx context.Context, message []byte) error {
+func (p *amqpp) Publish(ctx context.Context, data interface{}) error {
+	body, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 	return p.ch.Publish(
 		p.exch,
 		p.que,
 		false,
 		false,
-		amqp.Publishing{Body: []byte(message)},
+		amqp.Publishing{
+			ContentType:     "application/json",
+			ContentEncoding: "",
+			DeliveryMode:    2,
+			Timestamp:       time.Now().UTC(),
+			AppId:           "gohalt_enqueue",
+			Body:            body,
+		},
 	)
 }
 

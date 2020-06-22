@@ -427,7 +427,7 @@ func (thr *tkeyed) Acquire(ctx context.Context) error {
 		r, _ := thr.store.LoadOrStore(key, thr.newthr())
 		return r.(Throttler).Acquire(ctx)
 	}
-	return errors.New("keyed throttler can't the key")
+	return errors.New("throttler can't find any key")
 }
 
 func (thr *tkeyed) Release(ctx context.Context) error {
@@ -437,7 +437,29 @@ func (thr *tkeyed) Release(ctx context.Context) error {
 		}
 		return errors.New("throttler has nothing to release")
 	}
-	return errors.New("keyed throttler can't find any key")
+	return errors.New("throttler can't find any key")
+}
+
+type tenqueue struct {
+	enq Enqueuer
+}
+
+func NewThrottlerEnqueue(enqueuer Enqueuer) tenqueue {
+	return tenqueue{enq: enqueuer}
+}
+
+func (thr tenqueue) Acquire(ctx context.Context) error {
+	if data := ctxData(ctx); data != nil {
+		if err := thr.enq.Publish(ctx, data); err != nil {
+			return fmt.Errorf("throttler can't enqueue %w", err)
+		}
+		return nil
+	}
+	return errors.New("throttler can't find any data")
+}
+
+func (thr tenqueue) Release(ctx context.Context) error {
+	return nil
 }
 
 type tall []Throttler
@@ -447,7 +469,7 @@ func NewThrottlerAll(thrs []Throttler) tall {
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
-	var err error
+	err := errors.New("throttler error has happened")
 	for _, thr := range thrs {
 		if threrr := thr.Acquire(ctx); threrr != nil {
 			err = fmt.Errorf("%w %w", err, threrr)
