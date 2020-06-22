@@ -451,8 +451,12 @@ func NewThrottlerEnqueue(enqueuer Enqueuer) tenqueue {
 }
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
-	if data := ctxData(ctx); data != nil {
-		if err := thr.enq.Publish(ctx, data); err != nil {
+	if marshaler, data := ctxMarshaler(ctx), ctxData(ctx); marshaler != nil && data != nil {
+		message, err := marshaler(data)
+		if err != nil {
+			return fmt.Errorf("throttler can't enqueue %w", err)
+		}
+		if err := thr.enq.Publish(ctx, message); err != nil {
 			return fmt.Errorf("throttler can't enqueue %w", err)
 		}
 		return nil

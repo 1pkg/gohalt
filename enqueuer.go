@@ -2,7 +2,6 @@ package gohalt
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -12,7 +11,7 @@ import (
 )
 
 type Enqueuer interface {
-	Publish(context.Context, interface{}) error
+	Publish(context.Context, []byte) error
 	Close(context.Context) error
 }
 
@@ -46,11 +45,7 @@ func NewPublisherJsonAmqp(ctx context.Context, url string, queue string, pool ti
 	return enq, nil
 }
 
-func (enq *amqpp) Publish(ctx context.Context, data interface{}) error {
-	body, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
+func (enq *amqpp) Publish(ctx context.Context, message []byte) error {
 	enq.mut.Lock()
 	defer enq.mut.Unlock()
 	return enq.ch.Publish(
@@ -59,12 +54,10 @@ func (enq *amqpp) Publish(ctx context.Context, data interface{}) error {
 		false,
 		false,
 		amqp.Publishing{
-			ContentType:     "application/json",
-			ContentEncoding: "",
-			DeliveryMode:    2,
-			Timestamp:       time.Now().UTC(),
-			AppId:           "gohalt_enqueue",
-			Body:            body,
+			DeliveryMode: 2,
+			Timestamp:    time.Now().UTC(),
+			AppId:        "gohalt_enqueue",
+			Body:         message,
 		},
 	)
 }
@@ -125,15 +118,10 @@ func NewPublisherJsonKafka(ctx context.Context, network string, url string, topi
 	return enq, nil
 }
 
-func (enq *kafkap) Publish(ctx context.Context, data interface{}) error {
-	message, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
+func (enq *kafkap) Publish(ctx context.Context, message []byte) error {
 	enq.mut.Lock()
 	defer enq.mut.Unlock()
 	if _, err := enq.conn.WriteMessages(kafka.Message{
-		Key:   []byte("gohalt_enqueue"),
 		Value: message,
 		Time:  time.Now().UTC(),
 	}); err != nil {
