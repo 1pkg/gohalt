@@ -2,6 +2,7 @@ package gohalt
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -9,8 +10,13 @@ const (
 	gohaltctxpriority  = "gohalt_context_priority"
 	gohaltctxkey       = "gohalt_context_key"
 	gohaltctxdata      = "gohalt_context_data"
-	gohaltctxtimestamp = "gohalt_context_timestampy"
+	gohaltctxtimestamp = "gohalt_context_timestamp"
+	gohaltctxmarshaler = "gohalt_context_marshaler"
 )
+
+type Marshaler func(interface{}) ([]byte, error)
+
+var DefaultMarshaler Marshaler = json.Marshal
 
 func WithThrottling(ctx context.Context, priority uint8, key interface{}, data interface{}) context.Context {
 	ctx = WithPriority(ctx, priority)
@@ -27,9 +33,9 @@ func WithPriority(ctx context.Context, priority uint8) context.Context {
 	return context.WithValue(ctx, gohaltctxpriority, priority)
 }
 
-func ctxPriority(ctx context.Context, max uint8) uint8 {
+func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	if val := ctx.Value(gohaltctxpriority); val != nil {
-		if priority, ok := val.(uint8); ok && priority > 0 && priority <= max {
+		if priority, ok := val.(uint8); ok && priority > 0 && priority <= limit {
 			return priority
 		}
 	}
@@ -63,4 +69,17 @@ func ctxTimestamp(ctx context.Context) int64 {
 		}
 	}
 	return time.Now().UTC().UnixNano()
+}
+
+func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context {
+	return context.WithValue(ctx, gohaltctxmarshaler, mrsh)
+}
+
+func ctxMarshaler(ctx context.Context) Marshaler {
+	if val := ctx.Value(gohaltctxmarshaler); val != nil {
+		if marshaler, ok := val.(Marshaler); ok {
+			return marshaler
+		}
+	}
+	return DefaultMarshaler
 }
