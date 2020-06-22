@@ -9,8 +9,7 @@ import (
 )
 
 type Stats interface {
-	MEM() (alloc uint64, system uint64)
-	CPU() (avgpause uint64, avgusage float64)
+	Stats() (alloc uint64, system uint64, avgpause uint64, avgusage float64)
 }
 
 type cachedstats struct {
@@ -22,19 +21,15 @@ type cachedstats struct {
 
 func NewCachedStats(ctx context.Context, duration time.Duration) (*cachedstats, error) {
 	s := &cachedstats{}
-	loop(ctx, duration, s.refresh)
-	return s, s.refresh(ctx)
+	loop(ctx, duration, s.sync)
+	return s, s.sync(ctx)
 }
 
-func (s cachedstats) MEM() (alloc uint64, system uint64) {
-	return s.alloc, s.system
+func (s cachedstats) Stats() (alloc uint64, system uint64, avgpause uint64, avgusage float64) {
+	return s.alloc, s.system, s.avgpause, s.avgusage
 }
 
-func (s cachedstats) CPU() (avgpause uint64, avgusage float64) {
-	return s.avgpause, s.avgusage
-}
-
-func (s *cachedstats) refresh(ctx context.Context) error {
+func (s *cachedstats) sync(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
