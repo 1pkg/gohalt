@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/segmentio/kafka-go"
 	"github.com/streadway/amqp"
 )
@@ -14,8 +15,6 @@ type Enqueuer interface {
 	Publish(context.Context, []byte) error
 	Close(context.Context) error
 }
-
-var exchanger uint64
 
 type amqpp struct {
 	conn *amqp.Connection
@@ -28,9 +27,8 @@ type amqpp struct {
 	exch string
 }
 
-func NewPublisherJsonAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
-	exchanger++
-	exchange := fmt.Sprintf("gohalt_exchange_%d", exchanger)
+func NewPublisherAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
+	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := &amqpp{pool: pool, url: url, que: queue, exch: exchange}
 	if err := enq.connect(ctx); err != nil {
 		return nil, err
@@ -55,8 +53,9 @@ func (enq *amqpp) Publish(ctx context.Context, message []byte) error {
 		false,
 		amqp.Publishing{
 			DeliveryMode: 2,
-			Timestamp:    time.Now().UTC(),
 			AppId:        "gohalt_enqueue",
+			MessageId:    fmt.Sprintf("gohalt_enqueue_%s", uuid.NewV4()),
+			Timestamp:    time.Now().UTC(),
 			Body:         message,
 		},
 	)
@@ -103,7 +102,7 @@ type kafkap struct {
 	topic string
 }
 
-func NewPublisherJsonKafka(ctx context.Context, network string, url string, topic string, pool time.Duration) (*kafkap, error) {
+func NewPublisherKafka(ctx context.Context, network string, url string, topic string, pool time.Duration) (*kafkap, error) {
 	enq := &kafkap{net: network, url: url, topic: topic}
 	if err := enq.connect(ctx); err != nil {
 		return nil, err
@@ -122,8 +121,9 @@ func (enq *kafkap) Publish(ctx context.Context, message []byte) error {
 	enq.mut.Lock()
 	defer enq.mut.Unlock()
 	if _, err := enq.conn.WriteMessages(kafka.Message{
-		Value: message,
 		Time:  time.Now().UTC(),
+		Key:   []byte(fmt.Sprintf("gohalt_enqueue_%s", uuid.NewV4())),
+		Value: message,
 	}); err != nil {
 		return err
 	}

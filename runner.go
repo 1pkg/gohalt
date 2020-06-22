@@ -35,9 +35,19 @@ func (r *Runner) Go(run Runnable) {
 	r.GoWithContext(r.ctx, run)
 }
 
-func (r *Runner) GoWithParams(run Runnable, priority uint8, key interface{}, data interface{}) {
-	ctx := WithThrottling(r.ctx, priority, key, data)
-	r.GoWithContext(ctx, run)
+func (r *Runner) GoWithParams(
+	run Runnable,
+	priority uint8,
+	key interface{},
+	data interface{},
+	marshaler Marshaler,
+) {
+	r.ctx = WithPriority(r.ctx, priority)
+	r.ctx = WithKey(r.ctx, key)
+	r.ctx = WithData(r.ctx, data)
+	r.ctx = WithTimestamp(r.ctx)
+	r.ctx = WithMarshaler(r.ctx, marshaler)
+	r.GoWithContext(r.ctx, run)
 }
 
 func (r *Runner) GoWithContext(ctx context.Context, run Runnable) {

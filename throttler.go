@@ -182,7 +182,7 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 
 type tpriority struct {
 	run map[uint8]chan struct{}
-	prt uint8
+	lim uint8
 	mut sync.Mutex
 }
 
@@ -190,7 +190,7 @@ func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 	if priority == 0 {
 		priority = 1
 	}
-	thr := tpriority{prt: priority}
+	thr := tpriority{lim: priority}
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
@@ -201,7 +201,7 @@ func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 
 func (thr *tpriority) Acquire(ctx context.Context) error {
 	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.prt)]
+	run := thr.run[ctxPriority(ctx, thr.lim)]
 	thr.mut.Unlock()
 	run <- struct{}{}
 	return nil
@@ -209,7 +209,7 @@ func (thr *tpriority) Acquire(ctx context.Context) error {
 
 func (thr *tpriority) Release(ctx context.Context) error {
 	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.prt)]
+	run := thr.run[ctxPriority(ctx, thr.lim)]
 	thr.mut.Unlock()
 	select {
 	case <-run:
