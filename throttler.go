@@ -28,11 +28,11 @@ func NewThrottlerEcho(err error) techo {
 	return techo{err: err}
 }
 
-func (thr techo) Acquire(ctx context.Context) error {
+func (thr techo) Acquire(context.Context) error {
 	return thr.err
 }
 
-func (thr techo) Release(ctx context.Context) error {
+func (thr techo) Release(context.Context) error {
 	return thr.err
 }
 
@@ -44,12 +44,12 @@ func NewThrottlerWait(duration time.Duration) twait {
 	return twait{dur: duration}
 }
 
-func (thr twait) Acquire(ctx context.Context) error {
+func (thr twait) Acquire(context.Context) error {
 	time.Sleep(thr.dur)
 	return nil
 }
 
-func (thr twait) Release(ctx context.Context) error {
+func (thr twait) Release(context.Context) error {
 	return nil
 }
 
@@ -59,12 +59,12 @@ func NewThrottlerPanic() tpanic {
 	return tpanic{}
 }
 
-func (thr tpanic) Acquire(ctx context.Context) error {
+func (thr tpanic) Acquire(context.Context) error {
 	log.Fatal("throttler panic has happened")
 	return nil
 }
 
-func (thr tpanic) Release(ctx context.Context) error {
+func (thr tpanic) Release(context.Context) error {
 	return nil
 }
 
@@ -77,7 +77,7 @@ func NewThrottlerEach(num uint64) *teach {
 	return &teach{num: num}
 }
 
-func (thr *teach) Acquire(ctx context.Context) error {
+func (thr *teach) Acquire(context.Context) error {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
 		return fmt.Errorf("throttler has reached periodic skip %d", cur)
@@ -85,7 +85,7 @@ func (thr *teach) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *teach) Release(ctx context.Context) error {
+func (thr *teach) Release(context.Context) error {
 	return nil
 }
 
@@ -98,7 +98,7 @@ func NewThrottlerAfter(num uint64) *tafter {
 	return &tafter{num: num}
 }
 
-func (thr *tafter) Acquire(ctx context.Context) error {
+func (thr *tafter) Acquire(context.Context) error {
 	atomic.AddUint64(&thr.cur, 1)
 	if cur := atomic.LoadUint64(&thr.cur); cur < thr.num {
 		return fmt.Errorf("throttler has not reached pass yet %d", cur)
@@ -106,7 +106,7 @@ func (thr *tafter) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *tafter) Release(ctx context.Context) error {
+func (thr *tafter) Release(context.Context) error {
 	return nil
 }
 
@@ -119,7 +119,7 @@ func NewThrottlerFixed(max uint64) *tfixed {
 	return &tfixed{max: max}
 }
 
-func (thr *tfixed) Acquire(ctx context.Context) error {
+func (thr *tfixed) Acquire(context.Context) error {
 	if cur := atomic.LoadUint64(&thr.cur); cur > thr.max {
 		return fmt.Errorf("throttler has exceed fixed limit %d", cur)
 	}
@@ -127,7 +127,7 @@ func (thr *tfixed) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *tfixed) Release(ctx context.Context) error {
+func (thr *tfixed) Release(context.Context) error {
 	return nil
 }
 
@@ -140,7 +140,7 @@ func NewThrottlerAtomic(max uint64) *tatomic {
 	return &tatomic{max: max}
 }
 
-func (thr *tatomic) Acquire(ctx context.Context) error {
+func (thr *tatomic) Acquire(context.Context) error {
 	if run := atomic.LoadUint64(&thr.run); run > thr.max {
 		return fmt.Errorf("throttler has exceed running limit %d", run)
 	}
@@ -148,7 +148,7 @@ func (thr *tatomic) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *tatomic) Release(ctx context.Context) error {
+func (thr *tatomic) Release(context.Context) error {
 	if run := atomic.LoadUint64(&thr.run); run <= 0 {
 		return errors.New("throttler has nothing to release")
 	}
@@ -164,7 +164,7 @@ func NewThrottlerBlocking(size uint64) *tbuffered {
 	return &tbuffered{run: make(chan struct{}, size)}
 }
 
-func (thr *tbuffered) Acquire(ctx context.Context) error {
+func (thr *tbuffered) Acquire(context.Context) error {
 	thr.run <- struct{}{}
 	return nil
 }
@@ -270,7 +270,7 @@ func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64
 	}
 }
 
-func (thr tstats) Acquire(ctx context.Context) error {
+func (thr tstats) Acquire(context.Context) error {
 	alloc, system, avgpause, usage := thr.stats.Stats()
 	if alloc >= thr.alloc || system >= thr.system ||
 		avgpause >= thr.avgpause || usage >= thr.avgusage {
@@ -325,14 +325,14 @@ func NewThrottlerChance(possibillity float64) tchance {
 	return tchance{pos: possibillity}
 }
 
-func (thr tchance) Acquire(ctx context.Context) error {
+func (thr tchance) Acquire(context.Context) error {
 	if thr.pos > 1.0-rand.Float64() {
 		return errors.New("throttler has missed a chance")
 	}
 	return nil
 }
 
-func (thr tchance) Release(ctx context.Context) error {
+func (thr tchance) Release(context.Context) error {
 	return nil
 }
 
@@ -346,7 +346,7 @@ func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
 	return &tlatency{max: uint64(max), ret: retention}
 }
 
-func (thr tlatency) Acquire(ctx context.Context) error {
+func (thr tlatency) Acquire(context.Context) error {
 	if lat := atomic.LoadUint64(&thr.lat); lat > thr.max {
 		return fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
 	}
@@ -367,31 +367,31 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	return nil
 }
 
-type tquantile struct {
+type tpercentile struct {
 	lat *latheap
 	mut sync.Mutex
 	max uint64
-	qnt float64
+	pnt float64
 	ret time.Duration
 }
 
-func NewThrottlerQuantile(max time.Duration, quantile float64, retention time.Duration) *tquantile {
-	quantile = math.Abs(quantile)
-	if quantile > 1.0 {
-		quantile = 1.0
+func NewThrottlerQuantile(max time.Duration, percentile float64, retention time.Duration) *tpercentile {
+	percentile = math.Abs(percentile)
+	if percentile > 1.0 {
+		percentile = 1.0
 	}
-	return &tquantile{
+	return &tpercentile{
 		lat: &latheap{},
 		max: uint64(max),
-		qnt: quantile,
+		pnt: percentile,
 		ret: retention,
 	}
 }
 
-func (thr *tquantile) Acquire(ctx context.Context) error {
+func (thr *tpercentile) Acquire(ctx context.Context) error {
 	thr.mut.Lock()
 	size := float64(thr.lat.Len())
-	pos := int(math.Round(size * thr.qnt))
+	pos := int(math.Round(size * thr.pnt))
 	lat := thr.lat.At(pos)
 	thr.mut.Unlock()
 	if lat > thr.max {
@@ -406,7 +406,7 @@ func (thr *tquantile) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *tquantile) Release(ctx context.Context) error {
+func (thr *tpercentile) Release(ctx context.Context) error {
 	lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 	thr.mut.Lock()
 	heap.Push(thr.lat, lat)
