@@ -14,8 +14,35 @@ import (
 )
 
 type Throttler interface {
+	accept(tvisitor)
 	Acquire(context.Context) error
 	Release(context.Context) error
+}
+
+type tvisitor interface {
+	tvisitEcho(techo)
+	tvisitWait(twait)
+	tvisitPanic(tpanic)
+	tvisitEach(teach)
+	tvisitAfter(tafter)
+	tvisitChance(tchance)
+	tvisitFixed(tfixed)
+	tvisitRunning(trunning)
+	tvisitBuffered(tbuffered)
+	tvisitPriority(tpriority)
+	tvisitTimed(ttimed)
+	tvisitStats(tstats)
+	tvisitMetric(tmetric)
+	tvisitLatency(tlatency)
+	tvisitPercentile(tpercentile)
+	tvisitAdaptive(tadaptive)
+	tvisitContext(tcontext)
+	tvisitEnqueue(tenqueue)
+	tvisitStorage(tstorage)
+	tvisitKeyed(tkeyed)
+	tvisitAll(tall)
+	tvisitAny(tany)
+	tvisitNot(tnot)
 }
 
 type NewThrottler func() Throttler
@@ -110,6 +137,29 @@ func (thr *tafter) Release(context.Context) error {
 	return nil
 }
 
+type tchance struct {
+	pos float64
+}
+
+func NewThrottlerChance(possibillity float64) tchance {
+	possibillity = math.Abs(possibillity)
+	if possibillity > 1.0 {
+		possibillity = 1.0
+	}
+	return tchance{pos: possibillity}
+}
+
+func (thr tchance) Acquire(context.Context) error {
+	if thr.pos > 1.0-rand.Float64() {
+		return errors.New("throttler has missed a chance")
+	}
+	return nil
+}
+
+func (thr tchance) Release(context.Context) error {
+	return nil
+}
+
 type tfixed struct {
 	cur uint64
 	max uint64
@@ -131,16 +181,16 @@ func (thr *tfixed) Release(context.Context) error {
 	return nil
 }
 
-type tatomic struct {
+type trunning struct {
 	run uint64
 	max uint64
 }
 
-func NewThrottlerAtomic(max uint64) *tatomic {
-	return &tatomic{max: max}
+func NewThrottlerRunning(max uint64) *trunning {
+	return &trunning{max: max}
 }
 
-func (thr *tatomic) Acquire(context.Context) error {
+func (thr *trunning) Acquire(context.Context) error {
 	if run := atomic.LoadUint64(&thr.run); run > thr.max {
 		return fmt.Errorf("throttler has exceed running limit %d", run)
 	}
@@ -148,7 +198,7 @@ func (thr *tatomic) Acquire(context.Context) error {
 	return nil
 }
 
-func (thr *tatomic) Release(context.Context) error {
+func (thr *trunning) Release(context.Context) error {
 	if run := atomic.LoadUint64(&thr.run); run <= 0 {
 		return errors.New("throttler has nothing to release")
 	}
@@ -313,29 +363,6 @@ func (thr tmetric) Release(context.Context) error {
 	return nil
 }
 
-type tchance struct {
-	pos float64
-}
-
-func NewThrottlerChance(possibillity float64) tchance {
-	possibillity = math.Abs(possibillity)
-	if possibillity > 1.0 {
-		possibillity = 1.0
-	}
-	return tchance{pos: possibillity}
-}
-
-func (thr tchance) Acquire(context.Context) error {
-	if thr.pos > 1.0-rand.Float64() {
-		return errors.New("throttler has missed a chance")
-	}
-	return nil
-}
-
-func (thr tchance) Release(context.Context) error {
-	return nil
-}
-
 type tlatency struct {
 	lat uint64
 	max uint64
@@ -474,31 +501,26 @@ func (thr tcontext) Release(ctx context.Context) error {
 	}
 }
 
-type tkeyed struct {
-	store  sync.Map
-	newthr NewThrottler
+type tstorage struct {
+	thr     Throttler
+	storage Storage
+	sync    time.Duration
 }
 
-func NewThrottlerKeyed(newthr NewThrottler) *tkeyed {
-	return &tkeyed{newthr: newthr}
+func NewThrottlerStorage(ctx context.Context, thr Throttler, storage Storage, sync time.Duration) tstorage {
+	loop(ctx, sync, func(ctx context.Context) error {
+		// TODO
+		return ctx.Err()
+	})
+	return tstorage{thr: thr, storage: storage, sync: sync}
 }
 
-func (thr *tkeyed) Acquire(ctx context.Context) error {
-	if key := ctxKey(ctx); key != nil {
-		r, _ := thr.store.LoadOrStore(key, thr.newthr())
-		return r.(Throttler).Acquire(ctx)
-	}
-	return errors.New("throttler can't find any key")
+func (thr tstorage) Acquire(ctx context.Context) error {
+	return thr.thr.Acquire(ctx)
 }
 
-func (thr *tkeyed) Release(ctx context.Context) error {
-	if key := ctxKey(ctx); key != nil {
-		if r, ok := thr.store.Load(key); ok {
-			return r.(Throttler).Release(ctx)
-		}
-		return errors.New("throttler has nothing to release")
-	}
-	return errors.New("throttler can't find any key")
+func (thr tstorage) Release(ctx context.Context) error {
+	return thr.thr.Release(ctx)
 }
 
 type tenqueue struct {
@@ -525,6 +547,33 @@ func (thr tenqueue) Acquire(ctx context.Context) error {
 
 func (thr tenqueue) Release(ctx context.Context) error {
 	return nil
+}
+
+type tkeyed struct {
+	store  sync.Map
+	newthr NewThrottler
+}
+
+func NewThrottlerKeyed(newthr NewThrottler) *tkeyed {
+	return &tkeyed{newthr: newthr}
+}
+
+func (thr *tkeyed) Acquire(ctx context.Context) error {
+	if key := ctxKey(ctx); key != nil {
+		r, _ := thr.store.LoadOrStore(key, thr.newthr())
+		return r.(Throttler).Acquire(ctx)
+	}
+	return errors.New("throttler can't find any key")
+}
+
+func (thr *tkeyed) Release(ctx context.Context) error {
+	if key := ctxKey(ctx); key != nil {
+		if r, ok := thr.store.Load(key); ok {
+			return r.(Throttler).Release(ctx)
+		}
+		return errors.New("throttler has nothing to release")
+	}
+	return errors.New("throttler can't find any key")
 }
 
 type tall []Throttler
@@ -609,24 +658,24 @@ func (thrs tany) Release(ctx context.Context) error {
 	return err
 }
 
-type trevert struct {
+type tnot struct {
 	thr Throttler
 }
 
-func NewThrottlerRevert(thr Throttler) trevert {
-	return trevert{thr: thr}
+func NewThrottlerNot(thr Throttler) tnot {
+	return tnot{thr: thr}
 }
 
-func (thr trevert) Acquire(ctx context.Context) error {
+func (thr tnot) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler revert error has happened")
+	return errors.New("throttler error has happened")
 }
 
-func (thr trevert) Release(ctx context.Context) error {
+func (thr tnot) Release(ctx context.Context) error {
 	if err := thr.thr.Release(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler revert error has happened")
+	return errors.New("throttler error has happened")
 }
