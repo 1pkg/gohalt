@@ -31,7 +31,7 @@ type tvisitor interface {
 	tvisitBuffered(tbuffered)
 	tvisitPriority(tpriority)
 	tvisitTimed(ttimed)
-	tvisitStats(tstats)
+	tvisitMonitor(tmonitor)
 	tvisitMetric(tmetric)
 	tvisitLatency(tlatency)
 	tvisitPercentile(tpercentile)
@@ -302,41 +302,32 @@ func (thr ttimed) Release(ctx context.Context) error {
 	return thr.tfixed.Release(ctx)
 }
 
-type tstats struct {
-	stats    Stats
-	alloc    uint64
-	system   uint64
-	avgpause uint64
-	avgusage float64
+type tmonitor struct {
+	monitor Monitor
+	limit   Stats
 }
 
-func NewThrottlerStats(stats Stats, alloc uint64, system uint64, avgpause uint64, avgusage float64) tstats {
-	return tstats{
-		stats:    stats,
-		alloc:    alloc,
-		system:   system,
-		avgpause: avgpause,
-		avgusage: avgusage,
-	}
+func NewThrottlerMonitor(monitor Monitor, limit Stats) tmonitor {
+	return tmonitor{monitor: monitor, limit: limit}
 }
 
-func (thr tstats) Acquire(context.Context) error {
-	alloc, system, avgpause, usage := thr.stats.Stats()
-	if alloc >= thr.alloc || system >= thr.system ||
-		avgpause >= thr.avgpause || usage >= thr.avgusage {
+func (thr tmonitor) Acquire(context.Context) error {
+	stats := thr.monitor.Stats()
+	if stats.MemAlloc >= thr.limit.MemAlloc || stats.MemSystem >= thr.limit.MemSystem ||
+		stats.CpuPause >= thr.limit.CpuPause || stats.CpuUsage >= thr.limit.CpuUsage {
 		return fmt.Errorf(
 			`throttler has exceed stats limits
 alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
-			alloc/1024,
-			system/1024,
-			time.Duration(avgpause),
-			usage,
+			stats.MemAlloc/1024,
+			stats.MemSystem/1024,
+			time.Duration(stats.CpuPause),
+			stats.CpuUsage,
 		)
 	}
 	return nil
 }
 
-func (thr tstats) Release(context.Context) error {
+func (thr tmonitor) Release(context.Context) error {
 	return nil
 }
 
@@ -349,7 +340,7 @@ func NewThrottlerMetric(metric Metric) tmetric {
 }
 
 func (thr tmetric) Acquire(ctx context.Context) error {
-	val, err := thr.metric.QueryBinary(ctx)
+	val, err := thr.metric.Query(ctx)
 	if err != nil {
 		return fmt.Errorf("throttler error has occured %w", err)
 	}
@@ -537,7 +528,7 @@ func (thr tenqueue) Acquire(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("throttler can't enqueue %w", err)
 		}
-		if err := thr.enq.Publish(ctx, message); err != nil {
+		if err := thr.enq.Enqueue(ctx, message); err != nil {
 			return fmt.Errorf("throttler can't enqueue %w", err)
 		}
 		return nil

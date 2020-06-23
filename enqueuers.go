@@ -12,7 +12,7 @@ import (
 )
 
 type Enqueuer interface {
-	Publish(context.Context, []byte) error
+	Enqueue(context.Context, []byte) error
 	Close(context.Context) error
 }
 
@@ -27,7 +27,7 @@ type amqpp struct {
 	exch string
 }
 
-func NewPublisherAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
+func NewEnqueuerAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := &amqpp{pool: pool, url: url, que: queue, exch: exchange}
 	if err := enq.connect(ctx); err != nil {
@@ -43,7 +43,7 @@ func NewPublisherAmqp(ctx context.Context, url string, queue string, pool time.D
 	return enq, nil
 }
 
-func (enq *amqpp) Publish(ctx context.Context, message []byte) error {
+func (enq *amqpp) Enqueue(ctx context.Context, message []byte) error {
 	enq.mut.Lock()
 	defer enq.mut.Unlock()
 	return enq.ch.Publish(
@@ -102,7 +102,7 @@ type kafkap struct {
 	topic string
 }
 
-func NewPublisherKafka(ctx context.Context, network string, url string, topic string, pool time.Duration) (*kafkap, error) {
+func NewEnqueuerKafka(ctx context.Context, network string, url string, topic string, pool time.Duration) (*kafkap, error) {
 	enq := &kafkap{net: network, url: url, topic: topic}
 	if err := enq.connect(ctx); err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func NewPublisherKafka(ctx context.Context, network string, url string, topic st
 	return enq, nil
 }
 
-func (enq *kafkap) Publish(ctx context.Context, message []byte) error {
+func (enq *kafkap) Enqueue(ctx context.Context, message []byte) error {
 	enq.mut.Lock()
 	defer enq.mut.Unlock()
 	if _, err := enq.conn.WriteMessages(kafka.Message{
