@@ -375,7 +375,7 @@ type tpercentile struct {
 	ret time.Duration
 }
 
-func NewThrottlerQuantile(max time.Duration, percentile float64, retention time.Duration) *tpercentile {
+func NewThrottlerPercentile(max time.Duration, percentile float64, retention time.Duration) *tpercentile {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
@@ -412,6 +412,42 @@ func (thr *tpercentile) Release(ctx context.Context) error {
 	heap.Push(thr.lat, lat)
 	thr.mut.Unlock()
 	return nil
+}
+
+type tadaptive struct {
+	ttimed
+	step uint64
+	thr  Throttler
+}
+
+func NewThrottlerAdaptive(
+	ctx context.Context,
+	max uint64,
+	window time.Duration,
+	slide uint64,
+	step uint64,
+	thr Throttler,
+) tadaptive {
+	return tadaptive{
+		ttimed: NewThrottlerTimed(ctx, max, window, slide),
+		step:   step,
+		thr:    thr,
+	}
+}
+
+func (thr tadaptive) Acquire(ctx context.Context) error {
+	err := thr.thr.Acquire(ctx)
+	if err != nil {
+		atomic.AddUint64(&thr.ttimed.max, ^uint64(thr.step*thr.step))
+	} else {
+		atomic.AddUint64(&thr.ttimed.max, thr.step)
+	}
+
+	return thr.ttimed.Acquire(ctx)
+}
+
+func (thr tadaptive) Release(ctx context.Context) error {
+	return thr.ttimed.Release(ctx)
 }
 
 type tcontext struct{}
