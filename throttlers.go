@@ -231,9 +231,8 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	run map[uint8]chan struct{}
+	run sync.Map
 	lim uint8
-	mut sync.Mutex
 }
 
 func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
@@ -244,23 +243,29 @@ func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
-		thr.run[i] = make(chan struct{}, uint64(i)*koef)
+		thr.run.Store(i, make(chan struct{}, uint64(i)*koef))
 	}
 	return &thr
 }
 
 func (thr *tpriority) Acquire(ctx context.Context) error {
-	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.lim)]
-	thr.mut.Unlock()
+	priority := ctxPriority(ctx, thr.lim)
+	val, ok := thr.run.Load(priority)
+	if !ok {
+		return fmt.Errorf("throttler hasn't found priority %d", priority)
+	}
+	run := val.(chan struct{})
 	run <- struct{}{}
 	return nil
 }
 
 func (thr *tpriority) Release(ctx context.Context) error {
-	thr.mut.Lock()
-	run := thr.run[ctxPriority(ctx, thr.lim)]
-	thr.mut.Unlock()
+	priority := ctxPriority(ctx, thr.lim)
+	val, ok := thr.run.Load(priority)
+	if !ok {
+		return fmt.Errorf("throttler hasn't found priority %d", priority)
+	}
+	run := val.(chan struct{})
 	select {
 	case <-run:
 		return nil
@@ -386,8 +391,7 @@ func (thr *tlatency) Release(ctx context.Context) error {
 }
 
 type tpercentile struct {
-	lat *latheap
-	mut sync.Mutex
+	lat *blatheap
 	max uint64
 	pnt float64
 	ret time.Duration
@@ -399,7 +403,7 @@ func NewThrottlerPercentile(max time.Duration, percentile float64, retention tim
 		percentile = 1.0
 	}
 	return &tpercentile{
-		lat: &latheap{},
+		lat: &blatheap{},
 		max: uint64(max),
 		pnt: percentile,
 		ret: retention,
@@ -407,16 +411,12 @@ func NewThrottlerPercentile(max time.Duration, percentile float64, retention tim
 }
 
 func (thr *tpercentile) Acquire(ctx context.Context) error {
-	thr.mut.Lock()
 	size := float64(thr.lat.Len())
 	pos := int(math.Round(size * thr.pnt))
 	lat := thr.lat.At(pos)
-	thr.mut.Unlock()
 	if lat > thr.max {
 		once(ctx, thr.ret, func(context.Context) error {
-			thr.mut.Lock()
-			thr.lat = &latheap{}
-			thr.mut.Unlock()
+			thr.lat.Prune()
 			return nil
 		})
 		return fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
@@ -426,9 +426,7 @@ func (thr *tpercentile) Acquire(ctx context.Context) error {
 
 func (thr *tpercentile) Release(ctx context.Context) error {
 	lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
-	thr.mut.Lock()
 	heap.Push(thr.lat, lat)
-	thr.mut.Unlock()
 	return nil
 }
 

@@ -3,7 +3,6 @@ package gohalt
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -23,7 +22,6 @@ type mprometheus struct {
 
 	api prometheus.API
 	val bool
-	mut sync.Mutex
 }
 
 func NewMetricPrometheusCached(
@@ -56,9 +54,7 @@ func NewMetricPrometheusCached(
 	return &m, m.pull(ctx)
 }
 
-func (m *mprometheus) Query(ctx context.Context) (bool, error) {
-	m.mut.Lock()
-	defer m.mut.Unlock()
+func (m mprometheus) Query(ctx context.Context) (bool, error) {
 	return m.val, nil
 }
 
@@ -73,8 +69,6 @@ func (m *mprometheus) pull(ctx context.Context) error {
 	if !ok || (scalar.Value != 0 && scalar.Value != 1) {
 		return fmt.Errorf("boolean metric value expected instead of %v", val)
 	}
-	m.mut.Lock()
 	m.val = scalar.Value == 1
-	m.mut.Unlock()
 	return err
 }

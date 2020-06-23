@@ -1,40 +1,63 @@
 package gohalt
 
-type latheap []uint64
+import "sync"
+
+type blatheap struct {
+	buffer []uint64
+	mutex  sync.Mutex
+}
 
 // Len is the number of elements in the collection.
-func (lh latheap) Len() int {
-	return len(lh)
+func (lh *blatheap) Len() int {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	return len(lh.buffer)
 }
 
 // Less reports whether the element with
 // index i should sort before the element with index j.
-func (lh latheap) Less(i int, j int) bool {
-	return lh[i] < lh[j]
+func (lh *blatheap) Less(i int, j int) bool {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	return lh.buffer[i] < lh.buffer[j]
 }
 
 // Swap swaps the elements with indexes i and j.
-func (lh latheap) Swap(i int, j int) {
-	lh[i], lh[j] = lh[j], lh[i]
+func (lh *blatheap) Swap(i int, j int) {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	lh.buffer[i], lh.buffer[j] = lh.buffer[j], lh.buffer[i]
 }
 
 // Push add x as element Len().
-func (lh *latheap) Push(x interface{}) {
+func (lh *blatheap) Push(x interface{}) {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
 	if lat, ok := x.(uint64); ok {
-		*lh = append(*lh, lat)
+		lh.buffer = append(lh.buffer, lat)
 	}
 }
 
 // Pop remove and return element Len() - 1.
-func (lh *latheap) Pop() interface{} {
-	h := *lh
-	l := len(h)
-	x := h[l-1]
-	*lh = h[:l-1]
-	return x
+func (lh *blatheap) Pop() interface{} {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	blen := len(lh.buffer)
+	val := lh.buffer[blen-1]
+	lh.buffer = lh.buffer[:blen-1]
+	return val
 }
 
 // At returns element at position.
-func (lh *latheap) At(pos int) uint64 {
-	return (*lh)[pos]
+func (lh *blatheap) At(pos int) uint64 {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	return lh.buffer[pos]
+}
+
+// Prune cleans heap buffer.
+func (lh *blatheap) Prune() {
+	lh.mutex.Lock()
+	defer lh.mutex.Unlock()
+	lh.buffer = nil
 }
