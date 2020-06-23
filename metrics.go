@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type BinaryMetric interface {
-	Query(context.Context) (bool, error)
+type Metric interface {
+	QueryBinary(context.Context) (bool, error)
 }
 
 type mprometheus struct {
@@ -26,7 +26,7 @@ type mprometheus struct {
 	mut sync.Mutex
 }
 
-func NewBinaryMetricPrometheusCached(
+func NewMetricPrometheusCached(
 	ctx context.Context,
 	url string,
 	query string,
@@ -56,7 +56,7 @@ func NewBinaryMetricPrometheusCached(
 	return &m, m.pull(ctx)
 }
 
-func (m *mprometheus) Query(ctx context.Context) (bool, error) {
+func (m *mprometheus) QueryBinary(ctx context.Context) (bool, error) {
 	m.mut.Lock()
 	defer m.mut.Unlock()
 	return m.val, nil
