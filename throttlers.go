@@ -55,6 +55,10 @@ func NewThrottlerEcho(err error) techo {
 	return techo{err: err}
 }
 
+func (thr techo) accept(v tvisitor) {
+	v.tvisitEcho(thr)
+}
+
 func (thr techo) Acquire(context.Context) error {
 	return thr.err
 }
@@ -71,6 +75,10 @@ func NewThrottlerWait(duration time.Duration) twait {
 	return twait{dur: duration}
 }
 
+func (thr twait) accept(v tvisitor) {
+	v.tvisitWait(thr)
+}
+
 func (thr twait) Acquire(context.Context) error {
 	time.Sleep(thr.dur)
 	return nil
@@ -84,6 +92,10 @@ type tpanic struct{}
 
 func NewThrottlerPanic() tpanic {
 	return tpanic{}
+}
+
+func (thr tpanic) accept(v tvisitor) {
+	v.tvisitPanic(thr)
 }
 
 func (thr tpanic) Acquire(context.Context) error {
@@ -102,6 +114,10 @@ type teach struct {
 
 func NewThrottlerEach(num uint64) *teach {
 	return &teach{num: num}
+}
+
+func (thr teach) accept(v tvisitor) {
+	v.tvisitEach(thr)
 }
 
 func (thr *teach) Acquire(context.Context) error {
@@ -123,6 +139,10 @@ type tafter struct {
 
 func NewThrottlerAfter(num uint64) *tafter {
 	return &tafter{num: num}
+}
+
+func (thr tafter) accept(v tvisitor) {
+	v.tvisitAfter(thr)
 }
 
 func (thr *tafter) Acquire(context.Context) error {
@@ -149,6 +169,10 @@ func NewThrottlerChance(possibillity float64) tchance {
 	return tchance{pos: possibillity}
 }
 
+func (thr tchance) accept(v tvisitor) {
+	v.tvisitChance(thr)
+}
+
 func (thr tchance) Acquire(context.Context) error {
 	if thr.pos > 1.0-rand.Float64() {
 		return errors.New("throttler has missed a chance")
@@ -167,6 +191,10 @@ type tfixed struct {
 
 func NewThrottlerFixed(max uint64) *tfixed {
 	return &tfixed{max: max}
+}
+
+func (thr tfixed) accept(v tvisitor) {
+	v.tvisitFixed(thr)
 }
 
 func (thr *tfixed) Acquire(context.Context) error {
@@ -188,6 +216,10 @@ type trunning struct {
 
 func NewThrottlerRunning(max uint64) *trunning {
 	return &trunning{max: max}
+}
+
+func (thr trunning) accept(v tvisitor) {
+	v.tvisitRunning(thr)
 }
 
 func (thr *trunning) Acquire(context.Context) error {
@@ -214,6 +246,10 @@ func NewThrottlerBlocking(size uint64) *tbuffered {
 	return &tbuffered{run: make(chan struct{}, size)}
 }
 
+func (thr tbuffered) accept(v tvisitor) {
+	v.tvisitBuffered(thr)
+}
+
 func (thr *tbuffered) Acquire(context.Context) error {
 	thr.run <- struct{}{}
 	return nil
@@ -231,24 +267,28 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	run sync.Map
+	run *sync.Map
 	lim uint8
 }
 
-func NewThrottlerBlockingPriority(size uint64, priority uint8) *tpriority {
+func NewThrottlerBlockingPriority(size uint64, priority uint8) tpriority {
 	if priority == 0 {
 		priority = 1
 	}
-	thr := tpriority{lim: priority}
+	thr := tpriority{run: &sync.Map{}, lim: priority}
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
 		thr.run.Store(i, make(chan struct{}, uint64(i)*koef))
 	}
-	return &thr
+	return thr
 }
 
-func (thr *tpriority) Acquire(ctx context.Context) error {
+func (thr tpriority) accept(v tvisitor) {
+	v.tvisitPriority(thr)
+}
+
+func (thr tpriority) Acquire(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.lim)
 	val, ok := thr.run.Load(priority)
 	if !ok {
@@ -259,7 +299,7 @@ func (thr *tpriority) Acquire(ctx context.Context) error {
 	return nil
 }
 
-func (thr *tpriority) Release(ctx context.Context) error {
+func (thr tpriority) Release(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.lim)
 	val, ok := thr.run.Load(priority)
 	if !ok {
@@ -299,6 +339,10 @@ func NewThrottlerTimed(ctx context.Context, max uint64, window time.Duration, sl
 	return ttimed{tfixed: thr, wnd: window, sld: slide}
 }
 
+func (thr ttimed) accept(v tvisitor) {
+	v.tvisitTimed(thr)
+}
+
 func (thr ttimed) Acquire(ctx context.Context) error {
 	return thr.tfixed.Acquire(ctx)
 }
@@ -314,6 +358,10 @@ type tmonitor struct {
 
 func NewThrottlerMonitor(monitor Monitor, limit Stats) tmonitor {
 	return tmonitor{monitor: monitor, limit: limit}
+}
+
+func (thr tmonitor) accept(v tvisitor) {
+	v.tvisitMonitor(thr)
 }
 
 func (thr tmonitor) Acquire(context.Context) error {
@@ -344,6 +392,10 @@ func NewThrottlerMetric(metric Metric) tmetric {
 	return tmetric{metric: metric}
 }
 
+func (thr tmetric) accept(v tvisitor) {
+	v.tvisitMetric(thr)
+}
+
 func (thr tmetric) Acquire(ctx context.Context) error {
 	val, err := thr.metric.Query(ctx)
 	if err != nil {
@@ -367,6 +419,10 @@ type tlatency struct {
 
 func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
 	return &tlatency{max: uint64(max), ret: retention}
+}
+
+func (thr tlatency) accept(v tvisitor) {
+	v.tvisitLatency(thr)
 }
 
 func (thr tlatency) Acquire(context.Context) error {
@@ -410,6 +466,10 @@ func NewThrottlerPercentile(max time.Duration, percentile float64, retention tim
 	}
 }
 
+func (thr tpercentile) accept(v tvisitor) {
+	v.tvisitPercentile(thr)
+}
+
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	size := float64(thr.lat.Len())
 	pos := int(math.Round(size * thr.pnt))
@@ -451,6 +511,10 @@ func NewThrottlerAdaptive(
 	}
 }
 
+func (thr tadaptive) accept(v tvisitor) {
+	v.tvisitAdaptive(thr)
+}
+
 func (thr tadaptive) Acquire(ctx context.Context) error {
 	err := thr.thr.Acquire(ctx)
 	if err != nil {
@@ -470,6 +534,10 @@ type tcontext struct{}
 
 func NewThrottlerContext() tcontext {
 	return tcontext{}
+}
+
+func (thr tcontext) accept(v tvisitor) {
+	v.tvisitContext(thr)
 }
 
 func (thr tcontext) Acquire(ctx context.Context) error {
@@ -504,6 +572,10 @@ func NewThrottlerStorage(ctx context.Context, thr Throttler, storage Storage, sy
 	return tstorage{thr: thr, storage: storage, sync: sync}
 }
 
+func (thr tstorage) accept(v tvisitor) {
+	v.tvisitStorage(thr)
+}
+
 func (thr tstorage) Acquire(ctx context.Context) error {
 	return thr.thr.Acquire(ctx)
 }
@@ -518,6 +590,10 @@ type tenqueue struct {
 
 func NewThrottlerEnqueue(enqueuer Enqueuer) tenqueue {
 	return tenqueue{enq: enqueuer}
+}
+
+func (thr tenqueue) accept(v tvisitor) {
+	v.tvisitEnqueue(thr)
 }
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
@@ -539,15 +615,19 @@ func (thr tenqueue) Release(ctx context.Context) error {
 }
 
 type tkeyed struct {
-	store  sync.Map
+	store  *sync.Map
 	newthr NewThrottler
 }
 
-func NewThrottlerKeyed(newthr NewThrottler) *tkeyed {
-	return &tkeyed{newthr: newthr}
+func NewThrottlerKeyed(newthr NewThrottler) tkeyed {
+	return tkeyed{store: &sync.Map{}, newthr: newthr}
 }
 
-func (thr *tkeyed) Acquire(ctx context.Context) error {
+func (thr tkeyed) accept(v tvisitor) {
+	v.tvisitKeyed(thr)
+}
+
+func (thr tkeyed) Acquire(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
 		r, _ := thr.store.LoadOrStore(key, thr.newthr())
 		return r.(Throttler).Acquire(ctx)
@@ -555,7 +635,7 @@ func (thr *tkeyed) Acquire(ctx context.Context) error {
 	return errors.New("throttler can't find any key")
 }
 
-func (thr *tkeyed) Release(ctx context.Context) error {
+func (thr tkeyed) Release(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
 		if r, ok := thr.store.Load(key); ok {
 			return r.(Throttler).Release(ctx)
@@ -569,6 +649,10 @@ type tall []Throttler
 
 func NewThrottlerAll(thrs []Throttler) tall {
 	return tall(thrs)
+}
+
+func (thr tall) accept(v tvisitor) {
+	v.tvisitAll(thr)
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
@@ -599,6 +683,10 @@ type tany []Throttler
 
 func NewThrottlerAny(thrs []Throttler) tany {
 	return tany(thrs)
+}
+
+func (thr tany) accept(v tvisitor) {
+	v.tvisitAny(thr)
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {
@@ -653,6 +741,10 @@ type tnot struct {
 
 func NewThrottlerNot(thr Throttler) tnot {
 	return tnot{thr: thr}
+}
+
+func (thr tnot) accept(v tvisitor) {
+	v.tvisitNot(thr)
 }
 
 func (thr tnot) Acquire(ctx context.Context) error {
