@@ -286,7 +286,30 @@ alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
 	return nil
 }
 
-func (thr tstats) Release(ctx context.Context) error {
+func (thr tstats) Release(context.Context) error {
+	return nil
+}
+
+type tmetric struct {
+	metric Metric
+}
+
+func NewThrottlerMetric(metric Metric) tmetric {
+	return tmetric{metric: metric}
+}
+
+func (thr tmetric) Acquire(ctx context.Context) error {
+	val, err := thr.metric.QueryBinary(ctx)
+	if err != nil {
+		return fmt.Errorf("throttler error has occured %w", err)
+	}
+	if val {
+		return errors.New("throttler metric has been reached")
+	}
+	return nil
+}
+
+func (thr tmetric) Release(context.Context) error {
 	return nil
 }
 
