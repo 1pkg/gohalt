@@ -38,14 +38,11 @@ type tvisitor interface {
 	tvisitAdaptive(tadaptive)
 	tvisitContext(tcontext)
 	tvisitEnqueue(tenqueue)
-	tvisitStorage(tstorage)
 	tvisitKeyed(tkeyed)
 	tvisitAll(tall)
 	tvisitAny(tany)
 	tvisitNot(tnot)
 }
-
-type NewThrottler func() Throttler
 
 type techo struct {
 	err error
@@ -242,7 +239,7 @@ type tbuffered struct {
 	run chan struct{}
 }
 
-func NewThrottlerBlocking(size uint64) *tbuffered {
+func NewThrottlerBuffered(size uint64) *tbuffered {
 	return &tbuffered{run: make(chan struct{}, size)}
 }
 
@@ -267,15 +264,16 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	run *sync.Map
-	lim uint8
+	run  *sync.Map
+	size uint64
+	lim  uint8
 }
 
-func NewThrottlerBlockingPriority(size uint64, priority uint8) tpriority {
+func NewThrottlerPriority(size uint64, priority uint8) tpriority {
 	if priority == 0 {
 		priority = 1
 	}
-	thr := tpriority{run: &sync.Map{}, lim: priority}
+	thr := tpriority{run: &sync.Map{}, size: size, lim: priority}
 	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
 	for i := uint8(1); i <= priority; i++ {
@@ -558,32 +556,6 @@ func (thr tcontext) Release(ctx context.Context) error {
 	}
 }
 
-type tstorage struct {
-	thr     Throttler
-	storage Storage
-	sync    time.Duration
-}
-
-func NewThrottlerStorage(ctx context.Context, thr Throttler, storage Storage, sync time.Duration) tstorage {
-	loop(ctx, sync, func(ctx context.Context) error {
-		// TODO
-		return ctx.Err()
-	})
-	return tstorage{thr: thr, storage: storage, sync: sync}
-}
-
-func (thr tstorage) accept(v tvisitor) {
-	v.tvisitStorage(thr)
-}
-
-func (thr tstorage) Acquire(ctx context.Context) error {
-	return thr.thr.Acquire(ctx)
-}
-
-func (thr tstorage) Release(ctx context.Context) error {
-	return thr.thr.Release(ctx)
-}
-
 type tenqueue struct {
 	enq Enqueuer
 }
@@ -615,12 +587,12 @@ func (thr tenqueue) Release(ctx context.Context) error {
 }
 
 type tkeyed struct {
-	store  *sync.Map
-	newthr NewThrottler
+	store *sync.Map
+	gen   Generator
 }
 
-func NewThrottlerKeyed(newthr NewThrottler) tkeyed {
-	return tkeyed{store: &sync.Map{}, newthr: newthr}
+func NewThrottlerKeyed(generator Generator) tkeyed {
+	return tkeyed{store: &sync.Map{}, gen: generator}
 }
 
 func (thr tkeyed) accept(v tvisitor) {
@@ -629,7 +601,7 @@ func (thr tkeyed) accept(v tvisitor) {
 
 func (thr tkeyed) Acquire(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
-		r, _ := thr.store.LoadOrStore(key, thr.newthr())
+		r, _ := thr.store.LoadOrStore(key, thr.gen.Generate(ctx, key))
 		return r.(Throttler).Acquire(ctx)
 	}
 	return errors.New("throttler can't find any key")
