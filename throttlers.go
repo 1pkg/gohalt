@@ -14,34 +14,34 @@ import (
 )
 
 type Throttler interface {
-	accept(tvisitor)
+	accept(context.Context, tvisitor) interface{}
 	Acquire(context.Context) error
 	Release(context.Context) error
 }
 
 type tvisitor interface {
-	tvisitEcho(techo)
-	tvisitWait(twait)
-	tvisitPanic(tpanic)
-	tvisitEach(teach)
-	tvisitAfter(tafter)
-	tvisitChance(tchance)
-	tvisitFixed(tfixed)
-	tvisitRunning(trunning)
-	tvisitBuffered(tbuffered)
-	tvisitPriority(tpriority)
-	tvisitTimed(ttimed)
-	tvisitMonitor(tmonitor)
-	tvisitMetric(tmetric)
-	tvisitLatency(tlatency)
-	tvisitPercentile(tpercentile)
-	tvisitAdaptive(tadaptive)
-	tvisitContext(tcontext)
-	tvisitEnqueue(tenqueue)
-	tvisitKeyed(tkeyed)
-	tvisitAll(tall)
-	tvisitAny(tany)
-	tvisitNot(tnot)
+	tvisitEcho(context.Context, techo) interface{}
+	tvisitWait(context.Context, twait) interface{}
+	tvisitPanic(context.Context, tpanic) interface{}
+	tvisitEach(context.Context, teach) interface{}
+	tvisitAfter(context.Context, tafter) interface{}
+	tvisitChance(context.Context, tchance) interface{}
+	tvisitFixed(context.Context, tfixed) interface{}
+	tvisitRunning(context.Context, trunning) interface{}
+	tvisitBuffered(context.Context, tbuffered) interface{}
+	tvisitPriority(context.Context, tpriority) interface{}
+	tvisitTimed(context.Context, ttimed) interface{}
+	tvisitMonitor(context.Context, tmonitor) interface{}
+	tvisitMetric(context.Context, tmetric) interface{}
+	tvisitLatency(context.Context, tlatency) interface{}
+	tvisitPercentile(context.Context, tpercentile) interface{}
+	tvisitAdaptive(context.Context, tadaptive) interface{}
+	tvisitContext(context.Context, tcontext) interface{}
+	tvisitEnqueue(context.Context, tenqueue) interface{}
+	tvisitKeyed(context.Context, tkeyed) interface{}
+	tvisitAll(context.Context, tall) interface{}
+	tvisitAny(context.Context, tany) interface{}
+	tvisitNot(context.Context, tnot) interface{}
 }
 
 type techo struct {
@@ -52,8 +52,8 @@ func NewThrottlerEcho(err error) techo {
 	return techo{err: err}
 }
 
-func (thr techo) accept(v tvisitor) {
-	v.tvisitEcho(thr)
+func (thr techo) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitEcho(ctx, thr)
 }
 
 func (thr techo) Acquire(context.Context) error {
@@ -72,8 +72,8 @@ func NewThrottlerWait(duration time.Duration) twait {
 	return twait{dur: duration}
 }
 
-func (thr twait) accept(v tvisitor) {
-	v.tvisitWait(thr)
+func (thr twait) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitWait(ctx, thr)
 }
 
 func (thr twait) Acquire(context.Context) error {
@@ -91,8 +91,8 @@ func NewThrottlerPanic() tpanic {
 	return tpanic{}
 }
 
-func (thr tpanic) accept(v tvisitor) {
-	v.tvisitPanic(thr)
+func (thr tpanic) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitPanic(ctx, thr)
 }
 
 func (thr tpanic) Acquire(context.Context) error {
@@ -113,8 +113,8 @@ func NewThrottlerEach(num uint64) *teach {
 	return &teach{num: num}
 }
 
-func (thr teach) accept(v tvisitor) {
-	v.tvisitEach(thr)
+func (thr teach) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitEach(ctx, thr)
 }
 
 func (thr *teach) Acquire(context.Context) error {
@@ -138,8 +138,8 @@ func NewThrottlerAfter(num uint64) *tafter {
 	return &tafter{num: num}
 }
 
-func (thr tafter) accept(v tvisitor) {
-	v.tvisitAfter(thr)
+func (thr tafter) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitAfter(ctx, thr)
 }
 
 func (thr *tafter) Acquire(context.Context) error {
@@ -166,8 +166,8 @@ func NewThrottlerChance(possibillity float64) tchance {
 	return tchance{pos: possibillity}
 }
 
-func (thr tchance) accept(v tvisitor) {
-	v.tvisitChance(thr)
+func (thr tchance) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitChance(ctx, thr)
 }
 
 func (thr tchance) Acquire(context.Context) error {
@@ -190,8 +190,8 @@ func NewThrottlerFixed(max uint64) *tfixed {
 	return &tfixed{max: max}
 }
 
-func (thr tfixed) accept(v tvisitor) {
-	v.tvisitFixed(thr)
+func (thr tfixed) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitFixed(ctx, thr)
 }
 
 func (thr *tfixed) Acquire(context.Context) error {
@@ -215,8 +215,8 @@ func NewThrottlerRunning(max uint64) *trunning {
 	return &trunning{max: max}
 }
 
-func (thr trunning) accept(v tvisitor) {
-	v.tvisitRunning(thr)
+func (thr trunning) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitRunning(ctx, thr)
 }
 
 func (thr *trunning) Acquire(context.Context) error {
@@ -243,8 +243,8 @@ func NewThrottlerBuffered(size uint64) *tbuffered {
 	return &tbuffered{run: make(chan struct{}, size)}
 }
 
-func (thr tbuffered) accept(v tvisitor) {
-	v.tvisitBuffered(thr)
+func (thr tbuffered) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitBuffered(ctx, thr)
 }
 
 func (thr *tbuffered) Acquire(context.Context) error {
@@ -282,8 +282,8 @@ func NewThrottlerPriority(size uint64, priority uint8) tpriority {
 	return thr
 }
 
-func (thr tpriority) accept(v tvisitor) {
-	v.tvisitPriority(thr)
+func (thr tpriority) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitPriority(ctx, thr)
 }
 
 func (thr tpriority) Acquire(ctx context.Context) error {
@@ -337,8 +337,8 @@ func NewThrottlerTimed(ctx context.Context, max uint64, window time.Duration, sl
 	return ttimed{tfixed: thr, wnd: window, sld: slide}
 }
 
-func (thr ttimed) accept(v tvisitor) {
-	v.tvisitTimed(thr)
+func (thr ttimed) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitTimed(ctx, thr)
 }
 
 func (thr ttimed) Acquire(ctx context.Context) error {
@@ -358,8 +358,8 @@ func NewThrottlerMonitor(monitor Monitor, limit Stats) tmonitor {
 	return tmonitor{monitor: monitor, limit: limit}
 }
 
-func (thr tmonitor) accept(v tvisitor) {
-	v.tvisitMonitor(thr)
+func (thr tmonitor) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitMonitor(ctx, thr)
 }
 
 func (thr tmonitor) Acquire(context.Context) error {
@@ -390,8 +390,8 @@ func NewThrottlerMetric(metric Metric) tmetric {
 	return tmetric{metric: metric}
 }
 
-func (thr tmetric) accept(v tvisitor) {
-	v.tvisitMetric(thr)
+func (thr tmetric) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitMetric(ctx, thr)
 }
 
 func (thr tmetric) Acquire(ctx context.Context) error {
@@ -419,8 +419,8 @@ func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
 	return &tlatency{max: uint64(max), ret: retention}
 }
 
-func (thr tlatency) accept(v tvisitor) {
-	v.tvisitLatency(thr)
+func (thr tlatency) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitLatency(ctx, thr)
 }
 
 func (thr tlatency) Acquire(context.Context) error {
@@ -464,8 +464,8 @@ func NewThrottlerPercentile(max time.Duration, percentile float64, retention tim
 	}
 }
 
-func (thr tpercentile) accept(v tvisitor) {
-	v.tvisitPercentile(thr)
+func (thr tpercentile) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitPercentile(ctx, thr)
 }
 
 func (thr *tpercentile) Acquire(ctx context.Context) error {
@@ -509,8 +509,8 @@ func NewThrottlerAdaptive(
 	}
 }
 
-func (thr tadaptive) accept(v tvisitor) {
-	v.tvisitAdaptive(thr)
+func (thr tadaptive) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitAdaptive(ctx, thr)
 }
 
 func (thr tadaptive) Acquire(ctx context.Context) error {
@@ -534,8 +534,8 @@ func NewThrottlerContext() tcontext {
 	return tcontext{}
 }
 
-func (thr tcontext) accept(v tvisitor) {
-	v.tvisitContext(thr)
+func (thr tcontext) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitContext(ctx, thr)
 }
 
 func (thr tcontext) Acquire(ctx context.Context) error {
@@ -564,8 +564,8 @@ func NewThrottlerEnqueue(enqueuer Enqueuer) tenqueue {
 	return tenqueue{enq: enqueuer}
 }
 
-func (thr tenqueue) accept(v tvisitor) {
-	v.tvisitEnqueue(thr)
+func (thr tenqueue) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitEnqueue(ctx, thr)
 }
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
@@ -595,8 +595,8 @@ func NewThrottlerKeyed(generator Generator) tkeyed {
 	return tkeyed{store: &sync.Map{}, gen: generator}
 }
 
-func (thr tkeyed) accept(v tvisitor) {
-	v.tvisitKeyed(thr)
+func (thr tkeyed) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitKeyed(ctx, thr)
 }
 
 func (thr tkeyed) Acquire(ctx context.Context) error {
@@ -619,12 +619,12 @@ func (thr tkeyed) Release(ctx context.Context) error {
 
 type tall []Throttler
 
-func NewThrottlerAll(thrs []Throttler) tall {
+func NewThrottlerAll(thrs ...Throttler) tall {
 	return tall(thrs)
 }
 
-func (thr tall) accept(v tvisitor) {
-	v.tvisitAll(thr)
+func (thr tall) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitAll(ctx, thr)
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
@@ -653,12 +653,12 @@ func (thrs tall) Release(ctx context.Context) error {
 
 type tany []Throttler
 
-func NewThrottlerAny(thrs []Throttler) tany {
+func NewThrottlerAny(thrs ...Throttler) tany {
 	return tany(thrs)
 }
 
-func (thr tany) accept(v tvisitor) {
-	v.tvisitAny(thr)
+func (thr tany) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitAny(ctx, thr)
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {
@@ -715,8 +715,8 @@ func NewThrottlerNot(thr Throttler) tnot {
 	return tnot{thr: thr}
 }
 
-func (thr tnot) accept(v tvisitor) {
-	v.tvisitNot(thr)
+func (thr tnot) accept(ctx context.Context, v tvisitor) interface{} {
+	return v.tvisitNot(ctx, thr)
 }
 
 func (thr tnot) Acquire(ctx context.Context) error {

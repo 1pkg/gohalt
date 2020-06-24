@@ -9,141 +9,121 @@ type Generator interface {
 	Generate(context.Context, interface{}) Throttler
 }
 
-type gecho techo
-
-func (gen gecho) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerEcho(gen.err)
+type generator struct {
+	thr Throttler
 }
 
-type gwait twait
-
-func (gen gwait) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerWait(gen.dur)
+func NewGenerator(thr Throttler) generator {
+	return generator{thr: thr}
 }
 
-type gpanic tpanic
+func (gen generator) Generate(ctx context.Context, key interface{}) Throttler {
+	return gen.thr.accept(ctx, gen).(Throttler)
+}
 
-func (gen gpanic) Generate(context.Context, interface{}) Throttler {
+func (gen generator) tvisitEcho(ctx context.Context, thr techo) interface{} {
+	return NewThrottlerEcho(thr.err)
+}
+
+func (gen generator) tvisitWait(ctx context.Context, thr twait) interface{} {
+	return NewThrottlerWait(thr.dur)
+}
+
+func (gen generator) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
 	return NewThrottlerPanic()
 }
 
-type geach teach
-
-func (gen geach) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerEach(gen.num)
+func (gen generator) tvisitEach(ctx context.Context, thr teach) interface{} {
+	return NewThrottlerEach(thr.num)
 }
 
-type gafter tafter
-
-func (gen gafter) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerAfter(gen.num)
+func (gen generator) tvisitAfter(ctx context.Context, thr tafter) interface{} {
+	return NewThrottlerAfter(thr.num)
 }
 
-type gchance tchance
-
-func (gen gchance) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerChance(gen.pos)
+func (gen generator) tvisitChance(ctx context.Context, thr tchance) interface{} {
+	return NewThrottlerChance(thr.pos)
 }
 
-type gfixed tfixed
-
-func (gen gfixed) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerFixed(gen.max)
+func (gen generator) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
+	return NewThrottlerFixed(thr.max)
 }
 
-type grunning trunning
-
-func (gen grunning) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerRunning(gen.max)
+func (gen generator) tvisitRunning(ctx context.Context, thr trunning) interface{} {
+	return NewThrottlerRunning(thr.max)
 }
 
-type gbuffered tbuffered
-
-func (gen gbuffered) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerBuffered(uint64(len(gen.run)))
+func (gen generator) tvisitBuffered(ctx context.Context, thr tbuffered) interface{} {
+	return NewThrottlerBuffered(uint64(len(thr.run)))
 }
 
-type gpriority tpriority
-
-func (gen gpriority) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerPriority(gen.size, gen.lim)
+func (gen generator) tvisitPriority(ctx context.Context, thr tpriority) interface{} {
+	return NewThrottlerPriority(thr.size, thr.lim)
 }
 
-type gtimed ttimed
-
-func (gen gtimed) Generate(ctx context.Context, key interface{}) Throttler {
-	return NewThrottlerTimed(ctx, gen.max, gen.wnd, gen.sld)
+func (gen generator) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
+	return NewThrottlerTimed(ctx, thr.max, thr.wnd, thr.sld)
 }
 
-type gmonitor tmonitor
-
-func (gen gmonitor) Generate(ctx context.Context, key interface{}) Throttler {
-	return NewThrottlerMonitor(gen.monitor, gen.limit)
+func (gen generator) tvisitMonitor(ctx context.Context, thr tmonitor) interface{} {
+	return NewThrottlerMonitor(thr.monitor, thr.limit)
 }
 
-type gmetric tmetric
-
-func (gen gmetric) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerMetric(gen.metric)
+func (gen generator) tvisitMetric(ctx context.Context, thr tmetric) interface{} {
+	return NewThrottlerMetric(thr.metric)
 }
 
-type glatency tlatency
-
-func (gen glatency) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerLatency(time.Duration(gen.max), gen.ret)
+func (gen generator) tvisitLatency(ctx context.Context, thr tlatency) interface{} {
+	return NewThrottlerLatency(time.Duration(thr.max), thr.ret)
 }
 
-type gpercentile tpercentile
-
-func (gen gpercentile) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerPercentile(time.Duration(gen.max), gen.pnt, gen.ret)
+func (gen generator) tvisitPercentile(ctx context.Context, thr tpercentile) interface{} {
+	return NewThrottlerPercentile(time.Duration(thr.max), thr.pnt, thr.ret)
 }
 
-type gadaptive tadaptive
-
-func (gen gadaptive) Generate(ctx context.Context, key interface{}) Throttler {
+func (gen generator) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
+	gen = NewGenerator(thr.thr)
 	return NewThrottlerAdaptive(
 		ctx,
-		gen.max,
-		gen.wnd,
-		gen.sld,
-		gen.step,
-		gen.thr,
+		thr.max,
+		thr.wnd,
+		thr.sld,
+		thr.step,
+		gen.Generate(ctx, nil),
 	)
 }
 
-type gcontext tcontext
-
-func (gen gcontext) Generate(context.Context, interface{}) Throttler {
+func (gen generator) tvisitContext(ctx context.Context, thr tcontext) interface{} {
 	return NewThrottlerContext()
 }
 
-type genqueue tenqueue
-
-func (gen genqueue) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerEnqueue(gen.enq)
+func (gen generator) tvisitEnqueue(ctx context.Context, thr tenqueue) interface{} {
+	return NewThrottlerEnqueue(thr.enq)
 }
 
-type gkeyed tkeyed
-
-func (gen gkeyed) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerKeyed(gen.gen)
+func (gen generator) tvisitKeyed(ctx context.Context, thr tkeyed) interface{} {
+	return NewThrottlerKeyed(gen)
 }
 
-type gall tall
-
-func (gen gall) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerAll(gen)
+func (gen generator) tvisitAll(ctx context.Context, thrs tall) interface{} {
+	genthrs := make([]Throttler, 0, len(thrs))
+	for _, thr := range thrs {
+		gen := NewGenerator(thr)
+		genthrs = append(genthrs, gen.Generate(ctx, nil))
+	}
+	return NewThrottlerAll(genthrs...)
 }
 
-type gany tany
-
-func (gen gany) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerAny(gen)
+func (gen generator) tvisitAny(ctx context.Context, thrs tany) interface{} {
+	genthrs := make([]Throttler, 0, len(thrs))
+	for _, thr := range thrs {
+		gen := NewGenerator(thr)
+		genthrs = append(genthrs, gen.Generate(ctx, nil))
+	}
+	return NewThrottlerAny(genthrs...)
 }
 
-type gnot tnot
-
-func (gen gnot) Generate(context.Context, interface{}) Throttler {
-	return NewThrottlerNot(gen.thr)
+func (gen generator) tvisitNot(ctx context.Context, thr tnot) interface{} {
+	gen = NewGenerator(thr)
+	return NewThrottlerNot(gen.Generate(ctx, nil))
 }
