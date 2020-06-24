@@ -105,7 +105,7 @@ func (gen generator) tvisitEnqueue(ctx context.Context, thr tenqueue) interface{
 }
 
 func (gen generator) tvisitKeyed(ctx context.Context, thr tkeyed) interface{} {
-	return NewThrottlerKeyed(gen)
+	return NewThrottlerKeyed(thr.gen)
 }
 
 func (gen generator) tvisitAll(ctx context.Context, thrs tall) interface{} {
@@ -167,7 +167,7 @@ func NewGeneratorPattern(patterns ...Pattern) gpattern {
 	return gpattern{patterns: patterns}
 }
 
-func (gen *gpattern) Generate(ctx context.Context, key interface{}) Throttler {
+func (gen gpattern) Generate(ctx context.Context, key interface{}) Throttler {
 	for _, pattern := range gen.patterns {
 		if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
 			return pattern.Generator.Generate(ctx, key)
