@@ -3,6 +3,8 @@ package gohalt
 import (
 	"container/ring"
 	"context"
+	"regexp"
+	"sync"
 	"time"
 )
 
@@ -131,6 +133,7 @@ func (gen generator) tvisitNot(ctx context.Context, thr tnot) interface{} {
 
 type gring struct {
 	ring *ring.Ring
+	mut  sync.Mutex
 }
 
 func NewGeneratorRing(gens ...Generator) *gring {
@@ -144,7 +147,31 @@ func NewGeneratorRing(gens ...Generator) *gring {
 }
 
 func (gen *gring) Generate(ctx context.Context, key interface{}) Throttler {
+	gen.mut.Lock()
+	defer gen.mut.Unlock()
 	thr := gen.ring.Value.(Generator).Generate(ctx, key)
 	gen.ring = gen.ring.Next()
 	return thr
+}
+
+type Pattern struct {
+	Pattern   *regexp.Regexp
+	Generator Generator
+}
+
+type gpattern struct {
+	patterns []Pattern
+}
+
+func NewGeneratorPattern(patterns ...Pattern) gpattern {
+	return gpattern{patterns: patterns}
+}
+
+func (gen *gpattern) Generate(ctx context.Context, key interface{}) Throttler {
+	for _, pattern := range gen.patterns {
+		if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
+			return pattern.Generator.Generate(ctx, key)
+		}
+	}
+	return NewThrottlerEcho(nil)
 }
