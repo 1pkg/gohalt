@@ -1,6 +1,7 @@
 package gohalt
 
 import (
+	"container/ring"
 	"context"
 	"time"
 )
@@ -126,4 +127,24 @@ func (gen generator) tvisitAny(ctx context.Context, thrs tany) interface{} {
 func (gen generator) tvisitNot(ctx context.Context, thr tnot) interface{} {
 	gen = NewGenerator(thr)
 	return NewThrottlerNot(gen.Generate(ctx, nil))
+}
+
+type gring struct {
+	ring *ring.Ring
+}
+
+func NewGeneratorRing(gens ...Generator) *gring {
+	glen := len(gens)
+	ring := ring.New(glen)
+	for i := 0; i < glen; i++ {
+		ring.Value = gens[i]
+		ring = ring.Next()
+	}
+	return &gring{ring: ring}
+}
+
+func (gen *gring) Generate(ctx context.Context, key interface{}) Throttler {
+	thr := gen.ring.Value.(Generator).Generate(ctx, key)
+	gen.ring = gen.ring.Next()
+	return thr
 }
