@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -15,60 +16,52 @@ type Metric interface {
 }
 
 type mprometheus struct {
-	url   string
-	query string
-	exp   time.Duration
-	step  time.Duration
-
-	api prometheus.API
-	val bool
+	trypull Runnable
+	value   bool
 }
 
-func NewMetricPrometheusCached(
+func NewMetricPrometheusCached(url string, query string, cache time.Duration, mstep time.Duration) *mprometheus {
+	mtc := &mprometheus{}
+	var lock sync.Mutex
+	mtc.trypull = lazy(cache, func(ctx context.Context) error {
+		lock.Lock()
+		defer lock.Unlock()
+		return mtc.pull(ctx, url, query, cache, mstep)
+	})
+	return mtc
+}
+
+func (mtc mprometheus) Query(ctx context.Context) (bool, error) {
+	return mtc.value, nil
+}
+
+func (mtc *mprometheus) pull(
 	ctx context.Context,
 	url string,
 	query string,
-	exp time.Duration,
-	step time.Duration,
-) (*mprometheus, error) {
-	client, err := api.NewClient(api.Config{
-		Address:      url,
-		RoundTripper: api.DefaultRoundTripper,
-	})
+	cache time.Duration,
+	mstep time.Duration,
+) error {
+	client, err := api.NewClient(
+		api.Config{
+			Address:      url,
+			RoundTripper: api.DefaultRoundTripper,
+		},
+	)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	m := mprometheus{
-		url:   url,
-		query: query,
-		exp:   exp,
-		step:  step,
-		api:   prometheus.NewAPI(client),
-	}
-	loop(ctx, exp, func(ctx context.Context) error {
-		if err := m.pull(ctx); err != nil {
-			return err
-		}
-		return ctx.Err()
-	})
-	return &m, m.pull(ctx)
-}
-
-func (m mprometheus) Query(ctx context.Context) (bool, error) {
-	return m.val, nil
-}
-
-func (m *mprometheus) pull(ctx context.Context) error {
+	api := prometheus.NewAPI(client)
 	timestamp := time.Now().UTC()
-	val, _, err := m.api.QueryRange(ctx, m.query, prometheus.Range{
+	val, _, err := api.QueryRange(ctx, query, prometheus.Range{
 		Start: timestamp,
-		End:   timestamp.Add(m.exp),
-		Step:  m.step,
+		End:   timestamp.Add(cache),
+		Step:  mstep,
 	})
 	scalar, ok := val.(*model.Scalar)
 	if !ok || (scalar.Value != 0 && scalar.Value != 1) {
 		return fmt.Errorf("boolean metric value expected instead of %v", val)
 	}
-	m.val = scalar.Value == 1
+	mtc.value = scalar.Value == 1
 	return err
 }

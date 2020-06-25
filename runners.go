@@ -9,20 +9,18 @@ import (
 type Runnable func(context.Context) error
 
 type Runner struct {
-	thr Throttler
-
-	ctx context.Context
-	wg  sync.WaitGroup
-
-	rep func(error)
-	err error
+	thr    Throttler
+	wg     sync.WaitGroup
+	ctx    context.Context
+	err    error
+	report func(error)
 }
 
 func NewRunner(ctx context.Context, thr Throttler) (*Runner, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	r := Runner{thr: thr, ctx: ctx}
 	var once sync.Once
-	r.rep = func(err error) {
+	r.report = func(err error) {
 		once.Do(func() {
 			r.err = err
 			cancel()
@@ -55,23 +53,23 @@ func (r *Runner) GoWithContext(ctx context.Context, run Runnable) {
 	go func() {
 		defer func() {
 			if err := r.thr.Release(ctx); err != nil {
-				r.rep(fmt.Errorf("throttler error has happened %w", err))
+				r.report(fmt.Errorf("throttler error has happened %w", err))
 			}
 			r.wg.Done()
 			return
 		}()
 		if err := r.thr.Acquire(ctx); err != nil {
-			r.rep(fmt.Errorf("throttler error has happened %w", err))
+			r.report(fmt.Errorf("throttler error has happened %w", err))
 			return
 		}
 		select {
 		case <-ctx.Done():
-			r.rep(fmt.Errorf("context error has happened %w", ctx.Err()))
+			r.report(fmt.Errorf("context error has happened %w", ctx.Err()))
 			return
 		default:
 		}
 		if err := run(ctx); err != nil {
-			r.rep(fmt.Errorf("function error has happened %w", err))
+			r.report(fmt.Errorf("function error has happened %w", err))
 			return
 		}
 	}()
@@ -79,6 +77,6 @@ func (r *Runner) GoWithContext(ctx context.Context, run Runnable) {
 
 func (r *Runner) Wait() error {
 	r.wg.Wait()
-	r.rep(nil)
+	r.report(nil)
 	return r.err
 }

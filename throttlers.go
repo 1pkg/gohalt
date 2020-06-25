@@ -65,11 +65,11 @@ func (thr techo) Release(context.Context) error {
 }
 
 type twait struct {
-	dur time.Duration
+	duration time.Duration
 }
 
 func NewThrottlerWait(duration time.Duration) twait {
-	return twait{dur: duration}
+	return twait{duration: duration}
 }
 
 func (thr twait) accept(ctx context.Context, v tvisitor) interface{} {
@@ -77,7 +77,7 @@ func (thr twait) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr twait) Acquire(context.Context) error {
-	time.Sleep(thr.dur)
+	time.Sleep(thr.duration)
 	return nil
 }
 
@@ -105,12 +105,12 @@ func (thr tpanic) Release(context.Context) error {
 }
 
 type teach struct {
-	cur uint64
-	num uint64
+	current   uint64
+	threshold uint64
 }
 
-func NewThrottlerEach(num uint64) *teach {
-	return &teach{num: num}
+func NewThrottlerEach(threshold uint64) *teach {
+	return &teach{threshold: threshold}
 }
 
 func (thr teach) accept(ctx context.Context, v tvisitor) interface{} {
@@ -118,9 +118,9 @@ func (thr teach) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *teach) Acquire(context.Context) error {
-	atomic.AddUint64(&thr.cur, 1)
-	if cur := atomic.LoadUint64(&thr.cur); cur%thr.num == 0 {
-		return fmt.Errorf("throttler has reached periodic skip %d", cur)
+	atomic.AddUint64(&thr.current, 1)
+	if current := atomic.LoadUint64(&thr.current); current%thr.threshold == 0 {
+		return fmt.Errorf("throttler has reached periodic skip %d", current)
 	}
 	return nil
 }
@@ -130,12 +130,12 @@ func (thr *teach) Release(context.Context) error {
 }
 
 type tafter struct {
-	cur uint64
-	num uint64
+	current   uint64
+	threshold uint64
 }
 
-func NewThrottlerAfter(num uint64) *tafter {
-	return &tafter{num: num}
+func NewThrottlerAfter(threshold uint64) *tafter {
+	return &tafter{threshold: threshold}
 }
 
 func (thr tafter) accept(ctx context.Context, v tvisitor) interface{} {
@@ -143,9 +143,9 @@ func (thr tafter) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *tafter) Acquire(context.Context) error {
-	atomic.AddUint64(&thr.cur, 1)
-	if cur := atomic.LoadUint64(&thr.cur); cur < thr.num {
-		return fmt.Errorf("throttler has not reached pass yet %d", cur)
+	atomic.AddUint64(&thr.current, 1)
+	if current := atomic.LoadUint64(&thr.current); current < thr.threshold {
+		return fmt.Errorf("throttler has not reached pass yet %d", current)
 	}
 	return nil
 }
@@ -155,15 +155,15 @@ func (thr *tafter) Release(context.Context) error {
 }
 
 type tchance struct {
-	pos float64
+	percentage float64
 }
 
-func NewThrottlerChance(possibillity float64) tchance {
-	possibillity = math.Abs(possibillity)
-	if possibillity > 1.0 {
-		possibillity = 1.0
+func NewThrottlerChance(percentage float64) tchance {
+	percentage = math.Abs(percentage)
+	if percentage > 1.0 {
+		percentage = 1.0
 	}
-	return tchance{pos: possibillity}
+	return tchance{percentage: percentage}
 }
 
 func (thr tchance) accept(ctx context.Context, v tvisitor) interface{} {
@@ -171,7 +171,7 @@ func (thr tchance) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr tchance) Acquire(context.Context) error {
-	if thr.pos > 1.0-rand.Float64() {
+	if thr.percentage > 1.0-rand.Float64() {
 		return errors.New("throttler has missed a chance")
 	}
 	return nil
@@ -182,12 +182,12 @@ func (thr tchance) Release(context.Context) error {
 }
 
 type tfixed struct {
-	cur uint64
-	max uint64
+	current uint64
+	limit   uint64
 }
 
-func NewThrottlerFixed(max uint64) *tfixed {
-	return &tfixed{max: max}
+func NewThrottlerFixed(limit uint64) *tfixed {
+	return &tfixed{limit: limit}
 }
 
 func (thr tfixed) accept(ctx context.Context, v tvisitor) interface{} {
@@ -195,10 +195,10 @@ func (thr tfixed) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *tfixed) Acquire(context.Context) error {
-	if cur := atomic.LoadUint64(&thr.cur); cur > thr.max {
-		return fmt.Errorf("throttler has exceed fixed limit %d", cur)
+	if current := atomic.LoadUint64(&thr.current); current > thr.limit {
+		return fmt.Errorf("throttler has exceed fixed limit %d", current)
 	}
-	atomic.AddUint64(&thr.cur, 1)
+	atomic.AddUint64(&thr.current, 1)
 	return nil
 }
 
@@ -207,12 +207,12 @@ func (thr *tfixed) Release(context.Context) error {
 }
 
 type trunning struct {
-	run uint64
-	max uint64
+	running uint64
+	limit   uint64
 }
 
-func NewThrottlerRunning(max uint64) *trunning {
-	return &trunning{max: max}
+func NewThrottlerRunning(limit uint64) *trunning {
+	return &trunning{limit: limit}
 }
 
 func (thr trunning) accept(ctx context.Context, v tvisitor) interface{} {
@@ -220,27 +220,27 @@ func (thr trunning) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *trunning) Acquire(context.Context) error {
-	if run := atomic.LoadUint64(&thr.run); run > thr.max {
-		return fmt.Errorf("throttler has exceed running limit %d", run)
+	if running := atomic.LoadUint64(&thr.running); running > thr.limit {
+		return fmt.Errorf("throttler has exceed running limit %d", running)
 	}
-	atomic.AddUint64(&thr.run, 1)
+	atomic.AddUint64(&thr.running, 1)
 	return nil
 }
 
 func (thr *trunning) Release(context.Context) error {
-	if run := atomic.LoadUint64(&thr.run); run <= 0 {
+	if running := atomic.LoadUint64(&thr.running); running <= 0 {
 		return errors.New("throttler has nothing to release")
 	}
-	atomic.AddUint64(&thr.run, ^uint64(0))
+	atomic.AddUint64(&thr.running, ^uint64(0))
 	return nil
 }
 
 type tbuffered struct {
-	run chan struct{}
+	running chan struct{}
 }
 
 func NewThrottlerBuffered(size uint64) *tbuffered {
-	return &tbuffered{run: make(chan struct{}, size)}
+	return &tbuffered{running: make(chan struct{}, size)}
 }
 
 func (thr tbuffered) accept(ctx context.Context, v tvisitor) interface{} {
@@ -248,13 +248,13 @@ func (thr tbuffered) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *tbuffered) Acquire(context.Context) error {
-	thr.run <- struct{}{}
+	thr.running <- struct{}{}
 	return nil
 }
 
 func (thr *tbuffered) Release(ctx context.Context) error {
 	select {
-	case <-thr.run:
+	case <-thr.running:
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
@@ -264,21 +264,23 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	run  *sync.Map
-	size uint64
-	lim  uint8
+	running *sync.Map
+	size    uint64
+	limit   uint8
 }
 
-func NewThrottlerPriority(size uint64, priority uint8) tpriority {
-	if priority == 0 {
-		priority = 1
+func NewThrottlerPriority(size uint64, limit uint8) tpriority {
+	if limit == 0 {
+		limit = 1
 	}
-	thr := tpriority{run: &sync.Map{}, size: size, lim: priority}
-	sum := float64(priority) / 2 * float64((2 + (priority - 1)))
+	running := &sync.Map{}
+	sum := float64(limit) / 2 * float64((2 + (limit - 1)))
 	koef := uint64(math.Ceil(float64(size) / sum))
-	for i := uint8(1); i <= priority; i++ {
-		thr.run.Store(i, make(chan struct{}, uint64(i)*koef))
+	for i := uint8(1); i <= limit; i++ {
+		running.Store(i, make(chan struct{}, uint64(i)*koef))
 	}
+	thr := tpriority{size: size, limit: limit}
+	thr.running = running
 	return thr
 }
 
@@ -287,25 +289,25 @@ func (thr tpriority) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr tpriority) Acquire(ctx context.Context) error {
-	priority := ctxPriority(ctx, thr.lim)
-	val, ok := thr.run.Load(priority)
+	priority := ctxPriority(ctx, thr.limit)
+	val, ok := thr.running.Load(priority)
 	if !ok {
 		return fmt.Errorf("throttler hasn't found priority %d", priority)
 	}
-	run := val.(chan struct{})
-	run <- struct{}{}
+	running := val.(chan struct{})
+	running <- struct{}{}
 	return nil
 }
 
 func (thr tpriority) Release(ctx context.Context) error {
-	priority := ctxPriority(ctx, thr.lim)
-	val, ok := thr.run.Load(priority)
+	priority := ctxPriority(ctx, thr.limit)
+	val, ok := thr.running.Load(priority)
 	if !ok {
 		return fmt.Errorf("throttler hasn't found priority %d", priority)
 	}
-	run := val.(chan struct{})
+	running := val.(chan struct{})
 	select {
-	case <-run:
+	case <-running:
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
@@ -316,25 +318,25 @@ func (thr tpriority) Release(ctx context.Context) error {
 
 type ttimed struct {
 	*tfixed
-	wnd time.Duration
-	sld uint64
+	interval time.Duration
+	slide    time.Duration
 }
 
-func NewThrottlerTimed(ctx context.Context, max uint64, window time.Duration, slide uint64) ttimed {
-	thr := NewThrottlerFixed(max)
-	delta, interval := max, window
-	if slide > 0 && window > time.Duration(slide) {
+func NewThrottlerTimed(ctx context.Context, limit uint64, interval time.Duration, slide time.Duration) ttimed {
+	thr := NewThrottlerFixed(limit)
+	delta, window := limit, interval
+	if slide > 0 && interval > slide {
 		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
-		interval /= time.Duration(slide)
+		window /= slide
 	}
-	loop(ctx, interval, func(ctx context.Context) error {
-		atomic.AddUint64(&thr.cur, ^uint64(delta-1))
-		if cur := atomic.LoadUint64(&thr.cur); cur < 0 {
-			atomic.StoreUint64(&thr.cur, 0)
+	loop(ctx, window, func(ctx context.Context) error {
+		atomic.AddUint64(&thr.current, ^uint64(delta-1))
+		if current := atomic.LoadUint64(&thr.current); current < 0 {
+			atomic.StoreUint64(&thr.current, 0)
 		}
 		return ctx.Err()
 	})
-	return ttimed{tfixed: thr, wnd: window, sld: slide}
+	return ttimed{tfixed: thr, interval: interval, slide: slide}
 }
 
 func (thr ttimed) accept(ctx context.Context, v tvisitor) interface{} {
@@ -350,12 +352,12 @@ func (thr ttimed) Release(ctx context.Context) error {
 }
 
 type tmonitor struct {
-	monitor Monitor
-	limit   Stats
+	mnt   Monitor
+	limit Stats
 }
 
-func NewThrottlerMonitor(monitor Monitor, limit Stats) tmonitor {
-	return tmonitor{monitor: monitor, limit: limit}
+func NewThrottlerMonitor(mnt Monitor, limit Stats) tmonitor {
+	return tmonitor{mnt: mnt, limit: limit}
 }
 
 func (thr tmonitor) accept(ctx context.Context, v tvisitor) interface{} {
@@ -363,7 +365,7 @@ func (thr tmonitor) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr tmonitor) Acquire(context.Context) error {
-	stats := thr.monitor.Stats()
+	stats := thr.mnt.Stats()
 	if stats.MemAlloc >= thr.limit.MemAlloc || stats.MemSystem >= thr.limit.MemSystem ||
 		stats.CpuPause >= thr.limit.CpuPause || stats.CpuUsage >= thr.limit.CpuUsage {
 		return fmt.Errorf(
@@ -383,11 +385,11 @@ func (thr tmonitor) Release(context.Context) error {
 }
 
 type tmetric struct {
-	metric Metric
+	mtc Metric
 }
 
-func NewThrottlerMetric(metric Metric) tmetric {
-	return tmetric{metric: metric}
+func NewThrottlerMetric(mtc Metric) tmetric {
+	return tmetric{mtc: mtc}
 }
 
 func (thr tmetric) accept(ctx context.Context, v tvisitor) interface{} {
@@ -395,7 +397,7 @@ func (thr tmetric) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr tmetric) Acquire(ctx context.Context) error {
-	val, err := thr.metric.Query(ctx)
+	val, err := thr.mtc.Query(ctx)
 	if err != nil {
 		return fmt.Errorf("throttler error has occured %w", err)
 	}
@@ -410,13 +412,13 @@ func (thr tmetric) Release(context.Context) error {
 }
 
 type tlatency struct {
-	lat uint64
-	max uint64
-	ret time.Duration
+	latency   uint64
+	limit     time.Duration
+	retention time.Duration
 }
 
-func NewThrottlerLatency(max time.Duration, retention time.Duration) *tlatency {
-	return &tlatency{max: uint64(max), ret: retention}
+func NewThrottlerLatency(limit time.Duration, retention time.Duration) *tlatency {
+	return &tlatency{limit: limit, retention: retention}
 }
 
 func (thr tlatency) accept(ctx context.Context, v tvisitor) interface{} {
@@ -424,20 +426,18 @@ func (thr tlatency) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr tlatency) Acquire(context.Context) error {
-	if lat := atomic.LoadUint64(&thr.lat); lat > thr.max {
-		return fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
+	if latency := time.Duration(atomic.LoadUint64(&thr.latency)); latency > thr.limit {
+		return fmt.Errorf("throttler has exceed latency limit %s", latency)
 	}
 	return nil
 }
 
 func (thr *tlatency) Release(ctx context.Context) error {
-	if lat := atomic.LoadUint64(&thr.lat); lat < thr.max {
-		lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
-		if lat > thr.lat {
-			atomic.StoreUint64(&thr.lat, lat)
-		}
-		once(ctx, thr.ret, func(context.Context) error {
-			atomic.StoreUint64(&thr.lat, 0)
+	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
+		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
+		atomic.StoreUint64(&thr.latency, latency)
+		once(ctx, thr.retention, func(context.Context) error {
+			atomic.StoreUint64(&thr.latency, 0)
 			return nil
 		})
 	}
@@ -445,22 +445,22 @@ func (thr *tlatency) Release(ctx context.Context) error {
 }
 
 type tpercentile struct {
-	lat *blatheap
-	max uint64
-	pnt float64
-	ret time.Duration
+	latencies  *blatheap
+	limit      time.Duration
+	percentile float64
+	retention  time.Duration
 }
 
-func NewThrottlerPercentile(max time.Duration, percentile float64, retention time.Duration) *tpercentile {
+func NewThrottlerPercentile(limit time.Duration, percentile float64, retention time.Duration) *tpercentile {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
 	}
 	return &tpercentile{
-		lat: &blatheap{},
-		max: uint64(max),
-		pnt: percentile,
-		ret: retention,
+		latencies:  &blatheap{},
+		limit:      limit,
+		percentile: percentile,
+		retention:  retention,
 	}
 }
 
@@ -469,22 +469,20 @@ func (thr tpercentile) accept(ctx context.Context, v tvisitor) interface{} {
 }
 
 func (thr *tpercentile) Acquire(ctx context.Context) error {
-	size := float64(thr.lat.Len())
-	pos := int(math.Round(size * thr.pnt))
-	lat := thr.lat.At(pos)
-	if lat > thr.max {
-		once(ctx, thr.ret, func(context.Context) error {
-			thr.lat.Prune()
+	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
+	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
+		once(ctx, thr.retention, func(context.Context) error {
+			thr.latencies.Prune()
 			return nil
 		})
-		return fmt.Errorf("throttler has exceed latency limit %s", time.Duration(lat))
+		return fmt.Errorf("throttler has exceed latency limit %s", latency)
 	}
 	return nil
 }
 
 func (thr *tpercentile) Release(ctx context.Context) error {
-	lat := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
-	heap.Push(thr.lat, lat)
+	latency := ctxTimestamp(ctx) - time.Now().UTC().UnixNano()
+	heap.Push(thr.latencies, latency)
 	return nil
 }
 
@@ -496,14 +494,14 @@ type tadaptive struct {
 
 func NewThrottlerAdaptive(
 	ctx context.Context,
-	max uint64,
-	window time.Duration,
-	slide uint64,
+	limit uint64,
+	interval time.Duration,
+	slide time.Duration,
 	step uint64,
 	thr Throttler,
 ) tadaptive {
 	return tadaptive{
-		ttimed: NewThrottlerTimed(ctx, max, window, slide),
+		ttimed: NewThrottlerTimed(ctx, limit, interval, slide),
 		step:   step,
 		thr:    thr,
 	}
@@ -516,11 +514,10 @@ func (thr tadaptive) accept(ctx context.Context, v tvisitor) interface{} {
 func (thr tadaptive) Acquire(ctx context.Context) error {
 	err := thr.thr.Acquire(ctx)
 	if err != nil {
-		atomic.AddUint64(&thr.ttimed.max, ^uint64(thr.step*thr.step))
+		atomic.AddUint64(&thr.ttimed.limit, ^uint64(thr.step*thr.step))
 	} else {
-		atomic.AddUint64(&thr.ttimed.max, thr.step)
+		atomic.AddUint64(&thr.ttimed.limit, thr.step)
 	}
-
 	return thr.ttimed.Acquire(ctx)
 }
 
@@ -560,8 +557,8 @@ type tenqueue struct {
 	enq Enqueuer
 }
 
-func NewThrottlerEnqueue(enqueuer Enqueuer) tenqueue {
-	return tenqueue{enq: enqueuer}
+func NewThrottlerEnqueue(enq Enqueuer) tenqueue {
+	return tenqueue{enq: enq}
 }
 
 func (thr tenqueue) accept(ctx context.Context, v tvisitor) interface{} {
@@ -587,12 +584,12 @@ func (thr tenqueue) Release(ctx context.Context) error {
 }
 
 type tkeyed struct {
-	store *sync.Map
-	gen   Generator
+	keys *sync.Map
+	gen  Generator
 }
 
-func NewThrottlerKeyed(generator Generator) tkeyed {
-	return tkeyed{store: &sync.Map{}, gen: generator}
+func NewThrottlerKeyed(gen Generator) tkeyed {
+	return tkeyed{keys: &sync.Map{}, gen: gen}
 }
 
 func (thr tkeyed) accept(ctx context.Context, v tvisitor) interface{} {
@@ -601,7 +598,7 @@ func (thr tkeyed) accept(ctx context.Context, v tvisitor) interface{} {
 
 func (thr tkeyed) Acquire(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
-		r, _ := thr.store.LoadOrStore(key, thr.gen.Generate(ctx, key))
+		r, _ := thr.keys.LoadOrStore(key, thr.gen.Generate(ctx, key))
 		return r.(Throttler).Acquire(ctx)
 	}
 	return errors.New("throttler can't find any key")
@@ -609,7 +606,7 @@ func (thr tkeyed) Acquire(ctx context.Context) error {
 
 func (thr tkeyed) Release(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
-		if r, ok := thr.store.Load(key); ok {
+		if r, ok := thr.keys.Load(key); ok {
 			return r.(Throttler).Release(ctx)
 		}
 		return errors.New("throttler has nothing to release")
