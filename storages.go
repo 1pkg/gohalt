@@ -15,7 +15,7 @@ type Storage interface {
 
 type smemory struct {
 	buffer []byte
-	mutex  sync.Mutex
+	lock   sync.Mutex
 }
 
 func NewStorageMemory() *smemory {
@@ -23,8 +23,8 @@ func NewStorageMemory() *smemory {
 }
 
 func (s *smemory) Get() ([]byte, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	if s.buffer == nil {
 		return nil, errors.New("storage has no stored data")
 	}
@@ -32,8 +32,8 @@ func (s *smemory) Get() ([]byte, error) {
 }
 
 func (s *smemory) Set(data []byte) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	if data == nil {
 		return errors.New("storage can't store empty data")
 	}
@@ -42,24 +42,22 @@ func (s *smemory) Set(data []byte) error {
 }
 
 func (s *smemory) Close() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.buffer = nil
 	return nil
 }
 
 type sbadger struct {
-	db   *badger.DB
-	path string
-	key  []byte
+	db  *badger.DB
+	key []byte
 }
 
 func NewStorageBadger(path string, key string) (sbadger, error) {
 	db, err := badger.Open(badger.DefaultOptions(path))
 	return sbadger{
-		db:   db,
-		path: path,
-		key:  []byte(key),
+		db:  db,
+		key: []byte(key),
 	}, err
 }
 

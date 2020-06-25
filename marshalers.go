@@ -41,11 +41,11 @@ func (m Marshaler) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
 }
 
 func (m Marshaler) tvisitEach(ctx context.Context, thr teach) interface{} {
-	return thr.cur
+	return thr.current
 }
 
 func (m Marshaler) tvisitAfter(ctx context.Context, thr tafter) interface{} {
-	return thr.cur
+	return thr.current
 }
 
 func (m Marshaler) tvisitChance(ctx context.Context, thr tchance) interface{} {
@@ -53,7 +53,7 @@ func (m Marshaler) tvisitChance(ctx context.Context, thr tchance) interface{} {
 }
 
 func (m Marshaler) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
-	return thr.cur
+	return thr.current
 }
 
 func (m Marshaler) tvisitRunning(ctx context.Context, thr trunning) interface{} {
@@ -69,7 +69,7 @@ func (m Marshaler) tvisitPriority(ctx context.Context, thr tpriority) interface{
 }
 
 func (m Marshaler) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
-	return thr.cur
+	return thr.current
 }
 
 func (m Marshaler) tvisitMonitor(ctx context.Context, thr tmonitor) interface{} {
@@ -90,7 +90,7 @@ func (m Marshaler) tvisitPercentile(ctx context.Context, thr tpercentile) interf
 
 func (m Marshaler) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
 	return []interface{}{
-		thr.cur,
+		thr.current,
 		thr.accept(ctx, m),
 	}
 }
@@ -140,12 +140,12 @@ func (obj object) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
 }
 
 func (obj object) tvisitEach(ctx context.Context, thr teach) interface{} {
-	thr.cur = uint64(obj.obj.(float64))
+	thr.current = uint64(obj.obj.(float64))
 	return thr
 }
 
 func (obj object) tvisitAfter(ctx context.Context, thr tafter) interface{} {
-	thr.cur = uint64(obj.obj.(float64))
+	thr.current = uint64(obj.obj.(float64))
 	return thr
 }
 
@@ -154,7 +154,7 @@ func (obj object) tvisitChance(ctx context.Context, thr tchance) interface{} {
 }
 
 func (obj object) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
-	thr.cur = uint64(obj.obj.(float64))
+	thr.current = uint64(obj.obj.(float64))
 	return thr
 }
 
@@ -171,7 +171,7 @@ func (obj object) tvisitPriority(ctx context.Context, thr tpriority) interface{}
 }
 
 func (obj object) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
-	thr.cur = uint64(obj.obj.(float64))
+	thr.current = uint64(obj.obj.(float64))
 	return thr
 }
 
@@ -193,7 +193,7 @@ func (obj object) tvisitPercentile(ctx context.Context, thr tpercentile) interfa
 
 func (obj object) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
 	objs := obj.obj.([]interface{})
-	thr.cur = uint64(objs[0].(float64))
+	thr.current = uint64(objs[0].(float64))
 	thr.thr = thr.thr.accept(ctx, object{obj: objs[1]}).(Throttler)
 	return thr
 }

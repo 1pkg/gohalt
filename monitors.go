@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/cpu"
@@ -19,44 +20,40 @@ type Stats struct {
 	CpuUsage  float64
 }
 
-type mcached struct {
-	stats Stats
+type monitor struct {
+	trysync Runnable
+	stats   Stats
 }
 
-func NewCachedMonitor(ctx context.Context, duration time.Duration) (*mcached, error) {
-	m := &mcached{}
-	loop(ctx, duration, m.sync)
-	return m, m.sync(ctx)
+func NewMonitor(cache time.Duration) *monitor {
+	mnt := &monitor{}
+	var lock sync.Mutex
+	mnt.trysync = lazy(cache, func(ctx context.Context) error {
+		lock.Lock()
+		defer lock.Unlock()
+		return mnt.sync(ctx)
+	})
+	return mnt
 }
 
-func (m mcached) Stats() Stats {
-	return m.stats
+func (mnt monitor) Stats() Stats {
+	return mnt.stats
 }
 
-func (m *mcached) sync(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
+func (mnt *monitor) sync(ctx context.Context) error {
 	var memstats runtime.MemStats
 	runtime.ReadMemStats(&memstats)
-	m.stats.MemAlloc = memstats.Alloc
-	m.stats.MemSystem = memstats.Sys
+	mnt.stats.MemAlloc = memstats.Alloc
+	mnt.stats.MemSystem = memstats.Sys
 	for _, p := range memstats.PauseNs {
-		m.stats.CpuPause += p
+		mnt.stats.CpuPause += p
 	}
-	m.stats.CpuPause /= 256
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
+	mnt.stats.CpuPause /= 256
 	if percents, err := cpu.Percent(10*time.Millisecond, true); err != nil {
 		for _, p := range percents {
-			m.stats.CpuUsage += p
+			mnt.stats.CpuUsage += p
 		}
-		m.stats.CpuUsage /= float64(len(percents))
+		mnt.stats.CpuUsage /= float64(len(percents))
 	}
 	return nil
 }

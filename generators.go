@@ -5,7 +5,6 @@ import (
 	"context"
 	"regexp"
 	"sync"
-	"time"
 )
 
 type Generator interface {
@@ -29,7 +28,7 @@ func (gen generator) tvisitEcho(ctx context.Context, thr techo) interface{} {
 }
 
 func (gen generator) tvisitWait(ctx context.Context, thr twait) interface{} {
-	return NewThrottlerWait(thr.dur)
+	return NewThrottlerWait(thr.duration)
 }
 
 func (gen generator) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
@@ -37,60 +36,60 @@ func (gen generator) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
 }
 
 func (gen generator) tvisitEach(ctx context.Context, thr teach) interface{} {
-	return NewThrottlerEach(thr.num)
+	return NewThrottlerEach(thr.threshold)
 }
 
 func (gen generator) tvisitAfter(ctx context.Context, thr tafter) interface{} {
-	return NewThrottlerAfter(thr.num)
+	return NewThrottlerAfter(thr.threshold)
 }
 
 func (gen generator) tvisitChance(ctx context.Context, thr tchance) interface{} {
-	return NewThrottlerChance(thr.pos)
+	return NewThrottlerChance(thr.percentage)
 }
 
 func (gen generator) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
-	return NewThrottlerFixed(thr.max)
+	return NewThrottlerFixed(thr.limit)
 }
 
 func (gen generator) tvisitRunning(ctx context.Context, thr trunning) interface{} {
-	return NewThrottlerRunning(thr.max)
+	return NewThrottlerRunning(thr.limit)
 }
 
 func (gen generator) tvisitBuffered(ctx context.Context, thr tbuffered) interface{} {
-	return NewThrottlerBuffered(uint64(len(thr.run)))
+	return NewThrottlerBuffered(uint64(len(thr.running)))
 }
 
 func (gen generator) tvisitPriority(ctx context.Context, thr tpriority) interface{} {
-	return NewThrottlerPriority(thr.size, thr.lim)
+	return NewThrottlerPriority(thr.size, thr.limit)
 }
 
 func (gen generator) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
-	return NewThrottlerTimed(ctx, thr.max, thr.wnd, thr.sld)
+	return NewThrottlerTimed(ctx, thr.limit, thr.interval, thr.slide)
 }
 
 func (gen generator) tvisitMonitor(ctx context.Context, thr tmonitor) interface{} {
-	return NewThrottlerMonitor(thr.monitor, thr.limit)
+	return NewThrottlerMonitor(thr.mnt, thr.limit)
 }
 
 func (gen generator) tvisitMetric(ctx context.Context, thr tmetric) interface{} {
-	return NewThrottlerMetric(thr.metric)
+	return NewThrottlerMetric(thr.mtc)
 }
 
 func (gen generator) tvisitLatency(ctx context.Context, thr tlatency) interface{} {
-	return NewThrottlerLatency(time.Duration(thr.max), thr.ret)
+	return NewThrottlerLatency(thr.limit, thr.retention)
 }
 
 func (gen generator) tvisitPercentile(ctx context.Context, thr tpercentile) interface{} {
-	return NewThrottlerPercentile(time.Duration(thr.max), thr.pnt, thr.ret)
+	return NewThrottlerPercentile(thr.limit, thr.percentile, thr.retention)
 }
 
 func (gen generator) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
 	gen = NewGenerator(thr.thr)
 	return NewThrottlerAdaptive(
 		ctx,
-		thr.max,
-		thr.wnd,
-		thr.sld,
+		thr.limit,
+		thr.interval,
+		thr.slide,
 		thr.step,
 		gen.Generate(ctx, nil),
 	)
@@ -133,7 +132,7 @@ func (gen generator) tvisitNot(ctx context.Context, thr tnot) interface{} {
 
 type gring struct {
 	ring *ring.Ring
-	mut  sync.Mutex
+	lock sync.Mutex
 }
 
 func NewGeneratorRing(gens ...Generator) *gring {
@@ -147,8 +146,8 @@ func NewGeneratorRing(gens ...Generator) *gring {
 }
 
 func (gen *gring) Generate(ctx context.Context, key interface{}) Throttler {
-	gen.mut.Lock()
-	defer gen.mut.Unlock()
+	gen.lock.Lock()
+	defer gen.lock.Unlock()
 	thr := gen.ring.Value.(Generator).Generate(ctx, key)
 	gen.ring = gen.ring.Next()
 	return thr

@@ -13,42 +13,38 @@ import (
 
 type Enqueuer interface {
 	Enqueue(context.Context, []byte) error
-	Close(context.Context) error
 }
 
 type amqpp struct {
-	conn *amqp.Connection
-	ch   *amqp.Channel
-	mut  sync.Mutex
-
-	pool time.Duration
-	url  string
-	que  string
-	exch string
+	tryconnect Runnable
+	connection *amqp.Connection
+	channel    *amqp.Channel
+	queue      string
+	exchange   string
 }
 
-func NewEnqueuerAmqp(ctx context.Context, url string, queue string, pool time.Duration) (*amqpp, error) {
+func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) *amqpp {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
-	enq := &amqpp{pool: pool, url: url, que: queue, exch: exchange}
-	if err := enq.connect(ctx); err != nil {
-		return nil, err
-	}
-	loop(ctx, pool, func(ctx context.Context) error {
-		if err := enq.Close(ctx); err != nil {
+	enq := &amqpp{queue: queue, exchange: exchange}
+	var lock sync.Mutex
+	enq.tryconnect = lazy(cahce, func(ctx context.Context) error {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := enq.close(ctx); err != nil {
 			return err
 		}
-		enq.connect(ctx)
-		return ctx.Err()
+		return enq.connect(ctx, url)
 	})
-	return enq, nil
+	return enq
 }
 
 func (enq *amqpp) Enqueue(ctx context.Context, message []byte) error {
-	enq.mut.Lock()
-	defer enq.mut.Unlock()
-	return enq.ch.Publish(
-		enq.exch,
-		enq.que,
+	if err := enq.tryconnect(ctx); err != nil {
+		return err
+	}
+	return enq.channel.Publish(
+		enq.exchange,
+		enq.queue,
 		false,
 		false,
 		amqp.Publishing{
@@ -61,66 +57,57 @@ func (enq *amqpp) Enqueue(ctx context.Context, message []byte) error {
 	)
 }
 
-func (enq *amqpp) Close(context.Context) error {
-	enq.mut.Lock()
-	defer enq.mut.Unlock()
-	if err := enq.ch.Close(); err != nil {
+func (enq *amqpp) close(context.Context) error {
+	if enq.channel == nil || enq.connection == nil {
+		return nil
+	}
+	if err := enq.channel.Close(); err != nil {
 		return err
 	}
-	return enq.conn.Close()
+	return enq.connection.Close()
 }
 
-func (enq *amqpp) connect(context.Context) error {
-	conn, err := amqp.Dial(enq.url)
+func (enq *amqpp) connect(ctx context.Context, url string) error {
+	connection, err := amqp.Dial(url)
 	if err != nil {
 		return err
 	}
-	ch, err := conn.Channel()
-	if err := ch.ExchangeDeclare(enq.exch, "direct", true, true, false, false, nil); err != nil {
+	channel, err := connection.Channel()
+	if err := channel.ExchangeDeclare(enq.exchange, "direct", true, true, false, false, nil); err != nil {
 		return err
 	}
-	if _, err := ch.QueueDeclare(enq.que, true, false, false, false, nil); err != nil {
+	if _, err := channel.QueueDeclare(enq.queue, true, false, false, false, nil); err != nil {
 		return err
 	}
-	if err := ch.QueueBind(enq.que, enq.que, enq.exch, false, nil); err != nil {
+	if err := channel.QueueBind(enq.queue, enq.queue, enq.exchange, false, nil); err != nil {
 		return err
 	}
-	enq.mut.Lock()
-	enq.conn = conn
-	enq.ch = ch
-	enq.mut.Unlock()
+	enq.connection = connection
+	enq.channel = channel
 	return nil
 }
 
 type kafkap struct {
-	conn *kafka.Conn
-	mut  sync.Mutex
-
-	pool  time.Duration
-	net   string
-	url   string
-	topic string
+	tryconnect Runnable
+	connection *kafka.Conn
 }
 
-func NewEnqueuerKafka(ctx context.Context, network string, url string, topic string, pool time.Duration) (*kafkap, error) {
-	enq := &kafkap{net: network, url: url, topic: topic}
-	if err := enq.connect(ctx); err != nil {
-		return nil, err
-	}
-	loop(ctx, pool, func(ctx context.Context) error {
-		if err := enq.Close(ctx); err != nil {
+func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) *kafkap {
+	enq := &kafkap{}
+	var lock sync.Mutex
+	enq.tryconnect = lazy(cache, func(ctx context.Context) error {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := enq.close(ctx); err != nil {
 			return err
 		}
-		enq.connect(ctx)
-		return ctx.Err()
+		return enq.connect(ctx, net, url, topic)
 	})
-	return enq, nil
+	return enq
 }
 
 func (enq *kafkap) Enqueue(ctx context.Context, message []byte) error {
-	enq.mut.Lock()
-	defer enq.mut.Unlock()
-	if _, err := enq.conn.WriteMessages(kafka.Message{
+	if _, err := enq.connection.WriteMessages(kafka.Message{
 		Time:  time.Now().UTC(),
 		Key:   []byte(fmt.Sprintf("gohalt_enqueue_%s", uuid.NewV4())),
 		Value: message,
@@ -130,19 +117,18 @@ func (enq *kafkap) Enqueue(ctx context.Context, message []byte) error {
 	return nil
 }
 
-func (enq *kafkap) Close(ctx context.Context) error {
-	enq.mut.Lock()
-	defer enq.mut.Unlock()
-	return enq.conn.Close()
+func (enq *kafkap) close(ctx context.Context) error {
+	if enq.connection == nil {
+		return nil
+	}
+	return enq.connection.Close()
 }
 
-func (enq *kafkap) connect(ctx context.Context) error {
-	conn, err := kafka.DialLeader(ctx, enq.net, enq.url, enq.topic, 0)
+func (enq *kafkap) connect(ctx context.Context, net string, url string, topic string) error {
+	connection, err := kafka.DialLeader(ctx, net, url, topic, 0)
 	if err != nil {
 		return err
 	}
-	enq.mut.Lock()
-	enq.conn = conn
-	enq.mut.Unlock()
+	enq.connection = connection
 	return nil
 }
