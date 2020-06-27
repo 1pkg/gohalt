@@ -10,7 +10,7 @@ import (
 )
 
 type Monitor interface {
-	Stats() Stats
+	Stats(context.Context) (Stats, error)
 }
 
 type Stats struct {
@@ -21,14 +21,14 @@ type Stats struct {
 }
 
 type monitor struct {
-	trysync Runnable
-	stats   Stats
+	csync Runnable
+	stats Stats
 }
 
 func NewMonitor(cache time.Duration) *monitor {
 	mnt := &monitor{}
 	var lock sync.Mutex
-	mnt.trysync = lazy(cache, func(ctx context.Context) error {
+	mnt.csync = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
 		defer lock.Unlock()
 		return mnt.sync(ctx)
@@ -36,8 +36,11 @@ func NewMonitor(cache time.Duration) *monitor {
 	return mnt
 }
 
-func (mnt monitor) Stats() Stats {
-	return mnt.stats
+func (mnt monitor) Stats(ctx context.Context) (Stats, error) {
+	if err := mnt.csync(ctx); err != nil {
+		return mnt.stats, err
+	}
+	return mnt.stats, nil
 }
 
 func (mnt *monitor) sync(ctx context.Context) error {

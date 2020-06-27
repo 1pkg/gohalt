@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/api"
+	client "github.com/prometheus/client_golang/api"
 	prometheus "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
@@ -16,42 +16,48 @@ type Metric interface {
 }
 
 type mprometheus struct {
-	trypull Runnable
+	mempull Runnable
 	value   bool
 }
 
 func NewMetricPrometheusCached(url string, query string, cache time.Duration, mstep time.Duration) *mprometheus {
 	mtc := &mprometheus{}
 	var lock sync.Mutex
-	mtc.trypull = lazy(cache, func(ctx context.Context) error {
+	var api prometheus.API
+	mtc.mempull = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
 		defer lock.Unlock()
-		return mtc.pull(ctx, url, query, cache, mstep)
+		if api == nil {
+			client, err := client.NewClient(
+				client.Config{
+					Address:      url,
+					RoundTripper: client.DefaultRoundTripper,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			api = prometheus.NewAPI(client)
+		}
+		return mtc.pull(ctx, api, cache, mstep, query)
 	})
 	return mtc
 }
 
 func (mtc mprometheus) Query(ctx context.Context) (bool, error) {
+	if err := mtc.mempull(ctx); err != nil {
+		return mtc.value, err
+	}
 	return mtc.value, nil
 }
 
 func (mtc *mprometheus) pull(
 	ctx context.Context,
-	url string,
-	query string,
+	api prometheus.API,
 	cache time.Duration,
 	mstep time.Duration,
+	query string,
 ) error {
-	client, err := api.NewClient(
-		api.Config{
-			Address:      url,
-			RoundTripper: api.DefaultRoundTripper,
-		},
-	)
-	if err != nil {
-		return err
-	}
-	api := prometheus.NewAPI(client)
 	timestamp := time.Now().UTC()
 	val, _, err := api.QueryRange(ctx, query, prometheus.Range{
 		Start: timestamp,

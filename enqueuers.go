@@ -16,7 +16,7 @@ type Enqueuer interface {
 }
 
 type amqpp struct {
-	tryconnect Runnable
+	memconnect Runnable
 	connection *amqp.Connection
 	channel    *amqp.Channel
 	queue      string
@@ -27,7 +27,7 @@ func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) *amqpp {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := &amqpp{queue: queue, exchange: exchange}
 	var lock sync.Mutex
-	enq.tryconnect = lazy(cahce, func(ctx context.Context) error {
+	enq.memconnect = cached(cahce, func(ctx context.Context) error {
 		lock.Lock()
 		defer lock.Unlock()
 		if err := enq.close(ctx); err != nil {
@@ -39,7 +39,7 @@ func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) *amqpp {
 }
 
 func (enq *amqpp) Enqueue(ctx context.Context, message []byte) error {
-	if err := enq.tryconnect(ctx); err != nil {
+	if err := enq.memconnect(ctx); err != nil {
 		return err
 	}
 	return enq.channel.Publish(
@@ -88,14 +88,14 @@ func (enq *amqpp) connect(ctx context.Context, url string) error {
 }
 
 type kafkap struct {
-	tryconnect Runnable
+	memconnect Runnable
 	connection *kafka.Conn
 }
 
 func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) *kafkap {
 	enq := &kafkap{}
 	var lock sync.Mutex
-	enq.tryconnect = lazy(cache, func(ctx context.Context) error {
+	enq.memconnect = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
 		defer lock.Unlock()
 		if err := enq.close(ctx); err != nil {
@@ -107,6 +107,9 @@ func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration)
 }
 
 func (enq *kafkap) Enqueue(ctx context.Context, message []byte) error {
+	if err := enq.memconnect(ctx); err != nil {
+		return err
+	}
 	if _, err := enq.connection.WriteMessages(kafka.Message{
 		Time:  time.Now().UTC(),
 		Key:   []byte(fmt.Sprintf("gohalt_enqueue_%s", uuid.NewV4())),
