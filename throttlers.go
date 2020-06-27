@@ -257,7 +257,7 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 	case <-thr.running:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
+		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
 		return errors.New("throttler has nothing to release")
 	}
@@ -310,7 +310,7 @@ func (thr tpriority) Release(ctx context.Context) error {
 	case <-running:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
+		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
 		return errors.New("throttler has nothing to release")
 	}
@@ -364,8 +364,11 @@ func (thr tmonitor) accept(ctx context.Context, v tvisitor) interface{} {
 	return v.tvisitMonitor(ctx, thr)
 }
 
-func (thr tmonitor) Acquire(context.Context) error {
-	stats := thr.mnt.Stats()
+func (thr tmonitor) Acquire(ctx context.Context) error {
+	stats, err := thr.mnt.Stats(ctx)
+	if err != nil {
+		return fmt.Errorf("throttler error has happened %w", err)
+	}
 	if stats.MemAlloc >= thr.limit.MemAlloc || stats.MemSystem >= thr.limit.MemSystem ||
 		stats.CpuPause >= thr.limit.CpuPause || stats.CpuUsage >= thr.limit.CpuUsage {
 		return fmt.Errorf(
@@ -399,7 +402,7 @@ func (thr tmetric) accept(ctx context.Context, v tvisitor) interface{} {
 func (thr tmetric) Acquire(ctx context.Context) error {
 	val, err := thr.mtc.Query(ctx)
 	if err != nil {
-		return fmt.Errorf("throttler error has occured %w", err)
+		return fmt.Errorf("throttler error has happened %w", err)
 	}
 	if val {
 		return errors.New("throttler metric has been reached")
@@ -538,7 +541,7 @@ func (thr tcontext) accept(ctx context.Context, v tvisitor) interface{} {
 func (thr tcontext) Acquire(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
+		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
 		return nil
 	}
@@ -547,7 +550,7 @@ func (thr tcontext) Acquire(ctx context.Context) error {
 func (thr tcontext) Release(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has occured %w", ctx.Err())
+		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
 		return nil
 	}

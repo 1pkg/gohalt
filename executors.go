@@ -34,7 +34,7 @@ func once(ctx context.Context, after time.Duration, run Runnable) {
 	}()
 }
 
-func lazy(cache time.Duration, run Runnable) Runnable {
+func cached(cache time.Duration, run Runnable) Runnable {
 	var ts time.Time
 	return func(ctx context.Context) error {
 		now := time.Now().UTC()
