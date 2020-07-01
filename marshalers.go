@@ -11,225 +11,212 @@ type Unmarshaler func([]byte, interface{}) error
 var DefaultMarshaler Marshaler = json.Marshal
 var DefaultUnmarshaler Unmarshaler = json.Unmarshal
 
-type object struct {
+type mobject struct {
 	obj interface{}
 }
 
-func (m Marshaler) MarshalThrottler(ctx context.Context, thr Throttler) ([]byte, error) {
-	obj := thr.accept(ctx, m)
-	return m(obj)
+type umobject struct {
+	obj interface{}
+	thr Throttler
 }
 
-func (um Unmarshaler) UnmarshalThrottler(ctx context.Context, bytes []byte, thr Throttler) error {
-	var obj interface{}
-	if err := um(bytes, obj); err != nil {
-		return err
+func (m Marshaler) Marshal(ctx context.Context, thr Throttler) ([]byte, error) {
+	var mobj mobject
+	thr.accept(ctx, &mobj)
+	return m(mobj.obj)
+}
+
+func (um Unmarshaler) Unmarshal(ctx context.Context, bytes []byte, thr Throttler) (Throttler, error) {
+	var umobj umobject
+	if err := um(bytes, &umobj.obj); err != nil {
+		return nil, err
 	}
-	thr = thr.accept(ctx, object{obj: obj}).(Throttler)
-	return nil
+	thr.accept(ctx, &umobj)
+	return umobj.thr, nil
 }
 
-func (m Marshaler) tvisitEcho(ctx context.Context, thr techo) interface{} {
-	return nil
+func (mobj *mobject) tvisitEcho(ctx context.Context, thr techo) {
 }
 
-func (m Marshaler) tvisitWait(ctx context.Context, thr twait) interface{} {
-	return nil
+func (mobj *mobject) tvisitWait(ctx context.Context, thr twait) {
 }
 
-func (m Marshaler) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
-	return nil
+func (mobj *mobject) tvisitPanic(ctx context.Context, thr tpanic) {
 }
 
-func (m Marshaler) tvisitEach(ctx context.Context, thr teach) interface{} {
-	return thr.current
+func (mobj *mobject) tvisitEach(ctx context.Context, thr teach) {
+	mobj.obj = thr.current
 }
 
-func (m Marshaler) tvisitAfter(ctx context.Context, thr tafter) interface{} {
-	return thr.current
+func (mobj *mobject) tvisitAfter(ctx context.Context, thr tafter) {
+	mobj.obj = thr.current
 }
 
-func (m Marshaler) tvisitChance(ctx context.Context, thr tchance) interface{} {
-	return nil
+func (mobj *mobject) tvisitChance(ctx context.Context, thr tchance) {
 }
 
-func (m Marshaler) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
-	return thr.current
+func (mobj *mobject) tvisitFixed(ctx context.Context, thr tfixed) {
+	mobj.obj = thr.current
 }
 
-func (m Marshaler) tvisitRunning(ctx context.Context, thr trunning) interface{} {
-	return nil
+func (mobj *mobject) tvisitRunning(ctx context.Context, thr trunning) {
 }
 
-func (m Marshaler) tvisitBuffered(ctx context.Context, thr tbuffered) interface{} {
-	return nil
+func (mobj *mobject) tvisitBuffered(ctx context.Context, thr tbuffered) {
 }
 
-func (m Marshaler) tvisitPriority(ctx context.Context, thr tpriority) interface{} {
-	return nil
+func (mobj *mobject) tvisitPriority(ctx context.Context, thr tpriority) {
 }
 
-func (m Marshaler) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
-	return thr.current
+func (mobj *mobject) tvisitTimed(ctx context.Context, thr ttimed) {
+	mobj.obj = thr.current
 }
 
-func (m Marshaler) tvisitMonitor(ctx context.Context, thr tmonitor) interface{} {
-	return nil
+func (mobj *mobject) tvisitMonitor(ctx context.Context, thr tmonitor) {
 }
 
-func (m Marshaler) tvisitMetric(ctx context.Context, thr tmetric) interface{} {
-	return nil
+func (mobj *mobject) tvisitMetric(ctx context.Context, thr tmetric) {
 }
 
-func (m Marshaler) tvisitLatency(ctx context.Context, thr tlatency) interface{} {
-	return nil
+func (mobj *mobject) tvisitLatency(ctx context.Context, thr tlatency) {
 }
 
-func (m Marshaler) tvisitPercentile(ctx context.Context, thr tpercentile) interface{} {
-	return nil
+func (mobj *mobject) tvisitPercentile(ctx context.Context, thr tpercentile) {
 }
 
-func (m Marshaler) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
-	return []interface{}{
+func (mobj *mobject) tvisitAdaptive(ctx context.Context, thr tadaptive) {
+	var obj mobject
+	thr.thr.accept(ctx, &obj)
+	mobj.obj = []interface{}{
 		thr.current,
-		thr.accept(ctx, m),
+		obj.obj,
 	}
 }
 
-func (m Marshaler) tvisitContext(ctx context.Context, thr tcontext) interface{} {
-	return nil
+func (mobj *mobject) tvisitContext(ctx context.Context, thr tcontext) {
 }
 
-func (m Marshaler) tvisitEnqueue(ctx context.Context, thr tenqueue) interface{} {
-	return nil
+func (mobj *mobject) tvisitEnqueue(ctx context.Context, thr tenqueue) {
 }
 
-func (m Marshaler) tvisitKeyed(ctx context.Context, thr tkeyed) interface{} {
-	return nil
+func (mobj *mobject) tvisitKeyed(ctx context.Context, thr tkeyed) {
 }
 
-func (m Marshaler) tvisitAll(ctx context.Context, thrs tall) interface{} {
-	obj := make([]interface{}, 0, len(thrs))
+func (mobj *mobject) tvisitAll(ctx context.Context, thrs tall) {
+	objs := make([]interface{}, 0, len(thrs))
 	for _, thr := range thrs {
-		obj = append(obj, thr.accept(ctx, m))
+		var obj mobject
+		thr.accept(ctx, &obj)
+		objs = append(objs, obj.obj)
 	}
-	return obj
+	mobj.obj = objs
 }
 
-func (m Marshaler) tvisitAny(ctx context.Context, thrs tany) interface{} {
-	obj := make([]interface{}, 0, len(thrs))
+func (mobj *mobject) tvisitAny(ctx context.Context, thrs tany) {
+	objs := make([]interface{}, 0, len(thrs))
 	for _, thr := range thrs {
-		obj = append(obj, thr.accept(ctx, m))
+		var obj mobject
+		thr.accept(ctx, &obj)
+		objs = append(objs, obj.obj)
 	}
-	return obj
+	mobj.obj = objs
 }
 
-func (m Marshaler) tvisitNot(ctx context.Context, thr tnot) interface{} {
-	return thr.thr.accept(ctx, m)
+func (mobj *mobject) tvisitNot(ctx context.Context, thr tnot) {
+	thr.thr.accept(ctx, mobj)
 }
 
-func (obj object) tvisitEcho(ctx context.Context, thr techo) interface{} {
-	return thr
+func (umobj *umobject) tvisitEcho(ctx context.Context, thr techo) {
 }
 
-func (obj object) tvisitWait(ctx context.Context, thr twait) interface{} {
-	return thr
+func (umobj *umobject) tvisitWait(ctx context.Context, thr twait) {
 }
 
-func (obj object) tvisitPanic(ctx context.Context, thr tpanic) interface{} {
-	return thr
+func (umobj *umobject) tvisitPanic(ctx context.Context, thr tpanic) {
 }
 
-func (obj object) tvisitEach(ctx context.Context, thr teach) interface{} {
-	thr.current = uint64(obj.obj.(float64))
-	return thr
+func (umobj *umobject) tvisitEach(ctx context.Context, thr teach) {
+	thr.current = uint64(umobj.obj.(float64))
+	umobj.thr = &thr
 }
 
-func (obj object) tvisitAfter(ctx context.Context, thr tafter) interface{} {
-	thr.current = uint64(obj.obj.(float64))
-	return thr
+func (umobj *umobject) tvisitAfter(ctx context.Context, thr tafter) {
+	thr.current = uint64(umobj.obj.(float64))
+	umobj.thr = &thr
 }
 
-func (obj object) tvisitChance(ctx context.Context, thr tchance) interface{} {
-	return thr
+func (umobj *umobject) tvisitChance(ctx context.Context, thr tchance) {
 }
 
-func (obj object) tvisitFixed(ctx context.Context, thr tfixed) interface{} {
-	thr.current = uint64(obj.obj.(float64))
-	return thr
+func (umobj *umobject) tvisitFixed(ctx context.Context, thr tfixed) {
+	thr.current = uint64(umobj.obj.(float64))
+	umobj.thr = &thr
 }
 
-func (obj object) tvisitRunning(ctx context.Context, thr trunning) interface{} {
-	return thr
+func (umobj *umobject) tvisitRunning(ctx context.Context, thr trunning) {
 }
 
-func (obj object) tvisitBuffered(ctx context.Context, thr tbuffered) interface{} {
-	return thr
+func (umobj *umobject) tvisitBuffered(ctx context.Context, thr tbuffered) {
 }
 
-func (obj object) tvisitPriority(ctx context.Context, thr tpriority) interface{} {
-	return thr
+func (umobj *umobject) tvisitPriority(ctx context.Context, thr tpriority) {
 }
 
-func (obj object) tvisitTimed(ctx context.Context, thr ttimed) interface{} {
-	thr.current = uint64(obj.obj.(float64))
-	return thr
+func (umobj *umobject) tvisitTimed(ctx context.Context, thr ttimed) {
+	thr.current = uint64(umobj.obj.(float64))
+	umobj.thr = &thr
 }
 
-func (obj object) tvisitMonitor(ctx context.Context, thr tmonitor) interface{} {
-	return thr
+func (umobj *umobject) tvisitMonitor(ctx context.Context, thr tmonitor) {
 }
 
-func (obj object) tvisitMetric(ctx context.Context, thr tmetric) interface{} {
-	return thr
+func (umobj *umobject) tvisitMetric(ctx context.Context, thr tmetric) {
 }
 
-func (obj object) tvisitLatency(ctx context.Context, thr tlatency) interface{} {
-	return thr
+func (umobj *umobject) tvisitLatency(ctx context.Context, thr tlatency) {
 }
 
-func (obj object) tvisitPercentile(ctx context.Context, thr tpercentile) interface{} {
-	return thr
+func (umobj *umobject) tvisitPercentile(ctx context.Context, thr tpercentile) {
 }
 
-func (obj object) tvisitAdaptive(ctx context.Context, thr tadaptive) interface{} {
-	objs := obj.obj.([]interface{})
+func (umobj *umobject) tvisitAdaptive(ctx context.Context, thr tadaptive) {
+	objs := umobj.obj.([]interface{})
 	thr.current = uint64(objs[0].(float64))
-	thr.thr = thr.thr.accept(ctx, object{obj: objs[1]}).(Throttler)
-	return thr
+	obj := umobject{obj: objs[1]}
+	thr.thr.accept(ctx, &obj)
+	thr.thr = obj.thr
+	umobj.thr = &thr
 }
 
-func (obj object) tvisitContext(ctx context.Context, thr tcontext) interface{} {
-	return thr
+func (umobj *umobject) tvisitContext(ctx context.Context, thr tcontext) {
 }
 
-func (obj object) tvisitEnqueue(ctx context.Context, thr tenqueue) interface{} {
-	return thr
+func (umobj *umobject) tvisitEnqueue(ctx context.Context, thr tenqueue) {
 }
 
-func (obj object) tvisitKeyed(ctx context.Context, thr tkeyed) interface{} {
-	return thr
+func (umobj *umobject) tvisitKeyed(ctx context.Context, thr tkeyed) {
 }
 
-func (obj object) tvisitAll(ctx context.Context, thrs tall) interface{} {
-	objs := obj.obj.([]interface{})
-	nthrs := make([]Throttler, len(thrs))
+func (umobj *umobject) tvisitAll(ctx context.Context, thrs tall) {
+	objs := umobj.obj.([]interface{})
 	for i, thr := range thrs {
-		nthrs[i] = thr.accept(ctx, object{obj: objs[i]}).(Throttler)
+		obj := umobject{obj: objs[i]}
+		thr.accept(ctx, &obj)
+		thrs[i] = obj.thr
 	}
-	return nthrs
+	umobj.thr = thrs
 }
 
-func (obj object) tvisitAny(ctx context.Context, thrs tany) interface{} {
-	objs := obj.obj.([]interface{})
-	nthrs := make([]Throttler, len(thrs))
+func (umobj *umobject) tvisitAny(ctx context.Context, thrs tany) {
+	objs := umobj.obj.([]interface{})
 	for i, thr := range thrs {
-		nthrs[i] = thr.accept(ctx, object{obj: objs[i]}).(Throttler)
+		obj := umobject{obj: objs[i]}
+		thr.accept(ctx, &obj)
+		thrs[i] = obj.thr
 	}
-	return nthrs
+	umobj.thr = thrs
 }
 
-func (obj object) tvisitNot(ctx context.Context, thr tnot) interface{} {
-	thr.thr = thr.thr.accept(ctx, obj).(Throttler)
-	return thr
+func (umobj *umobject) tvisitNot(ctx context.Context, thr tnot) {
+	thr.thr.accept(ctx, umobj)
 }
