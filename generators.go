@@ -130,22 +130,22 @@ func (gen generator) tvisitNot(ctx context.Context, thr tnot) interface{} {
 	return NewThrottlerNot(gen.Generate(ctx, nil))
 }
 
-type gring struct {
+type genring struct {
 	ring *ring.Ring
 	lock sync.Mutex
 }
 
-func NewGeneratorRing(gens ...Generator) *gring {
+func NewGeneratorRing(gens ...Generator) *genring {
 	glen := len(gens)
 	ring := ring.New(glen)
 	for i := 0; i < glen; i++ {
 		ring.Value = gens[i]
 		ring = ring.Next()
 	}
-	return &gring{ring: ring}
+	return &genring{ring: ring}
 }
 
-func (gen *gring) Generate(ctx context.Context, key interface{}) Throttler {
+func (gen *genring) Generate(ctx context.Context, key interface{}) Throttler {
 	gen.lock.Lock()
 	defer gen.lock.Unlock()
 	thr := gen.ring.Value.(Generator).Generate(ctx, key)
@@ -158,15 +158,15 @@ type Pattern struct {
 	Generator Generator
 }
 
-type gpattern struct {
+type genpattern struct {
 	patterns []Pattern
 }
 
-func NewGeneratorPattern(patterns ...Pattern) gpattern {
-	return gpattern{patterns: patterns}
+func NewGeneratorPattern(patterns ...Pattern) genpattern {
+	return genpattern{patterns: patterns}
 }
 
-func (gen gpattern) Generate(ctx context.Context, key interface{}) Throttler {
+func (gen genpattern) Generate(ctx context.Context, key interface{}) Throttler {
 	for _, pattern := range gen.patterns {
 		if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
 			return pattern.Generator.Generate(ctx, key)

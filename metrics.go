@@ -15,13 +15,13 @@ type Metric interface {
 	Query(context.Context) (bool, error)
 }
 
-type mprometheus struct {
+type mtcprometheus struct {
 	mempull Runnable
 	value   bool
 }
 
-func NewMetricPrometheusCached(url string, query string, cache time.Duration, mstep time.Duration) *mprometheus {
-	mtc := &mprometheus{}
+func NewMetricPrometheusCached(url string, query string, cache time.Duration, mstep time.Duration) *mtcprometheus {
+	mtc := &mtcprometheus{}
 	var lock sync.Mutex
 	var api prometheus.API
 	mtc.mempull = cached(cache, func(ctx context.Context) error {
@@ -44,14 +44,14 @@ func NewMetricPrometheusCached(url string, query string, cache time.Duration, ms
 	return mtc
 }
 
-func (mtc mprometheus) Query(ctx context.Context) (bool, error) {
+func (mtc *mtcprometheus) Query(ctx context.Context) (bool, error) {
 	if err := mtc.mempull(ctx); err != nil {
 		return mtc.value, err
 	}
 	return mtc.value, nil
 }
 
-func (mtc *mprometheus) pull(
+func (mtc *mtcprometheus) pull(
 	ctx context.Context,
 	api prometheus.API,
 	cache time.Duration,

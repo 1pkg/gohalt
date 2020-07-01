@@ -20,12 +20,13 @@ func (m Marshaler) MarshalThrottler(ctx context.Context, thr Throttler) ([]byte,
 	return m(obj)
 }
 
-func (um Unmarshaler) UnmarshalThrottler(ctx context.Context, bytes []byte, thr Throttler) (Throttler, error) {
+func (um Unmarshaler) UnmarshalThrottler(ctx context.Context, bytes []byte, thr Throttler) error {
 	var obj interface{}
 	if err := um(bytes, obj); err != nil {
-		return thr, err
+		return err
 	}
-	return thr.accept(ctx, object{obj: obj}).(Throttler), nil
+	thr = thr.accept(ctx, object{obj: obj}).(Throttler)
+	return nil
 }
 
 func (m Marshaler) tvisitEcho(ctx context.Context, thr techo) interface{} {
