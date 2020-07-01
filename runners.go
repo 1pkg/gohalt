@@ -6,8 +6,6 @@ import (
 	"sync"
 )
 
-type Runnable func(context.Context) error
-
 type Runner struct {
 	thr    Throttler
 	wg     sync.WaitGroup
