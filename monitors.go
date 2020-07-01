@@ -21,14 +21,14 @@ type Stats struct {
 }
 
 type monitor struct {
-	csync Runnable
-	stats Stats
+	memsync Runnable
+	stats   Stats
 }
 
 func NewMonitor(cache time.Duration) *monitor {
 	mnt := &monitor{}
 	var lock sync.Mutex
-	mnt.csync = cached(cache, func(ctx context.Context) error {
+	mnt.memsync = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
 		defer lock.Unlock()
 		return mnt.sync(ctx)
@@ -37,7 +37,7 @@ func NewMonitor(cache time.Duration) *monitor {
 }
 
 func (mnt monitor) Stats(ctx context.Context) (Stats, error) {
-	if err := mnt.csync(ctx); err != nil {
+	if err := mnt.memsync(ctx); err != nil {
 		return mnt.stats, err
 	}
 	return mnt.stats, nil

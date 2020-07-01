@@ -24,20 +24,15 @@ func NewMetricPrometheusCached(url string, query string, cache time.Duration, ms
 	mtc := &mtcprometheus{}
 	var lock sync.Mutex
 	var api prometheus.API
-	mtc.mempull = cached(cache, func(ctx context.Context) error {
+	mtc.mempull = cached(cache, func(ctx context.Context) (err error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if api == nil {
-			client, err := client.NewClient(
-				client.Config{
-					Address:      url,
-					RoundTripper: client.DefaultRoundTripper,
-				},
-			)
-			if err != nil {
-				return err
-			}
-			api = prometheus.NewAPI(client)
+		if api != nil {
+			return mtc.pull(ctx, api, cache, mstep, query)
+		}
+		api, err = mtc.connect(ctx, url)
+		if err != nil {
+			return err
 		}
 		return mtc.pull(ctx, api, cache, mstep, query)
 	})
@@ -49,6 +44,19 @@ func (mtc *mtcprometheus) Query(ctx context.Context) (bool, error) {
 		return mtc.value, err
 	}
 	return mtc.value, nil
+}
+
+func (mtc mtcprometheus) connect(ctx context.Context, url string) (prometheus.API, error) {
+	client, err := client.NewClient(
+		client.Config{
+			Address:      url,
+			RoundTripper: client.DefaultRoundTripper,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return prometheus.NewAPI(client), nil
 }
 
 func (mtc *mtcprometheus) pull(
