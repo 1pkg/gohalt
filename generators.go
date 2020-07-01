@@ -25,67 +25,67 @@ func (gen *generator) Generate(ctx context.Context, key interface{}) Throttler {
 	return gengen.thr
 }
 
-func (gen *generator) tvisitEcho(ctx context.Context, thr techo) {
+func (gen *generator) tvisitEcho(ctx context.Context, thr *techo) {
 	gen.thr = NewThrottlerEcho(thr.err)
 }
 
-func (gen *generator) tvisitWait(ctx context.Context, thr twait) {
+func (gen *generator) tvisitWait(ctx context.Context, thr *twait) {
 	gen.thr = NewThrottlerWait(thr.duration)
 }
 
-func (gen *generator) tvisitPanic(ctx context.Context, thr tpanic) {
+func (gen *generator) tvisitPanic(ctx context.Context, thr *tpanic) {
 	gen.thr = NewThrottlerPanic()
 }
 
-func (gen *generator) tvisitEach(ctx context.Context, thr teach) {
+func (gen *generator) tvisitEach(ctx context.Context, thr *teach) {
 	gen.thr = NewThrottlerEach(thr.threshold)
 }
 
-func (gen *generator) tvisitAfter(ctx context.Context, thr tafter) {
+func (gen *generator) tvisitAfter(ctx context.Context, thr *tafter) {
 	gen.thr = NewThrottlerAfter(thr.threshold)
 }
 
-func (gen *generator) tvisitChance(ctx context.Context, thr tchance) {
+func (gen *generator) tvisitChance(ctx context.Context, thr *tchance) {
 	gen.thr = NewThrottlerChance(thr.percentage)
 }
 
-func (gen *generator) tvisitFixed(ctx context.Context, thr tfixed) {
+func (gen *generator) tvisitFixed(ctx context.Context, thr *tfixed) {
 	gen.thr = NewThrottlerFixed(thr.limit)
 }
 
-func (gen *generator) tvisitRunning(ctx context.Context, thr trunning) {
+func (gen *generator) tvisitRunning(ctx context.Context, thr *trunning) {
 	gen.thr = NewThrottlerRunning(thr.limit)
 }
 
-func (gen *generator) tvisitBuffered(ctx context.Context, thr tbuffered) {
+func (gen *generator) tvisitBuffered(ctx context.Context, thr *tbuffered) {
 	gen.thr = NewThrottlerBuffered(uint64(len(thr.running)))
 }
 
-func (gen *generator) tvisitPriority(ctx context.Context, thr tpriority) {
+func (gen *generator) tvisitPriority(ctx context.Context, thr *tpriority) {
 	gen.thr = NewThrottlerPriority(thr.size, thr.limit)
 }
 
-func (gen *generator) tvisitTimed(ctx context.Context, thr ttimed) {
+func (gen *generator) tvisitTimed(ctx context.Context, thr *ttimed) {
 	gen.thr = NewThrottlerTimed(ctx, thr.limit, thr.interval, thr.slide)
 }
 
-func (gen *generator) tvisitMonitor(ctx context.Context, thr tmonitor) {
+func (gen *generator) tvisitMonitor(ctx context.Context, thr *tmonitor) {
 	gen.thr = NewThrottlerMonitor(thr.mnt, thr.limit)
 }
 
-func (gen *generator) tvisitMetric(ctx context.Context, thr tmetric) {
+func (gen *generator) tvisitMetric(ctx context.Context, thr *tmetric) {
 	gen.thr = NewThrottlerMetric(thr.mtc)
 }
 
-func (gen *generator) tvisitLatency(ctx context.Context, thr tlatency) {
+func (gen *generator) tvisitLatency(ctx context.Context, thr *tlatency) {
 	gen.thr = NewThrottlerLatency(thr.limit, thr.retention)
 }
 
-func (gen *generator) tvisitPercentile(ctx context.Context, thr tpercentile) {
+func (gen *generator) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 	gen.thr = NewThrottlerPercentile(thr.limit, thr.percentile, thr.retention)
 }
 
-func (gen *generator) tvisitAdaptive(ctx context.Context, thr tadaptive) {
+func (gen *generator) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	gen = NewGenerator(thr.thr)
 	gen.thr = NewThrottlerAdaptive(
 		ctx,
@@ -97,19 +97,20 @@ func (gen *generator) tvisitAdaptive(ctx context.Context, thr tadaptive) {
 	)
 }
 
-func (gen *generator) tvisitContext(ctx context.Context, thr tcontext) {
+func (gen *generator) tvisitContext(ctx context.Context, thr *tcontext) {
 	gen.thr = NewThrottlerContext()
 }
 
-func (gen *generator) tvisitEnqueue(ctx context.Context, thr tenqueue) {
+func (gen *generator) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 	gen.thr = NewThrottlerEnqueue(thr.enq)
 }
 
-func (gen *generator) tvisitKeyed(ctx context.Context, thr tkeyed) {
+func (gen *generator) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 	gen.thr = NewThrottlerKeyed(thr.gen)
 }
 
-func (gen *generator) tvisitAll(ctx context.Context, thrs tall) {
+func (gen *generator) tvisitAll(ctx context.Context, thr *tall) {
+	thrs := *thr
 	genthrs := make([]Throttler, 0, len(thrs))
 	for _, thr := range thrs {
 		gen := NewGenerator(thr)
@@ -118,7 +119,8 @@ func (gen *generator) tvisitAll(ctx context.Context, thrs tall) {
 	gen.thr = NewThrottlerAll(genthrs...)
 }
 
-func (gen *generator) tvisitAny(ctx context.Context, thrs tany) {
+func (gen *generator) tvisitAny(ctx context.Context, thr *tany) {
+	thrs := *thr
 	genthrs := make([]Throttler, 0, len(thrs))
 	for _, thr := range thrs {
 		gen := NewGenerator(thr)
@@ -127,7 +129,7 @@ func (gen *generator) tvisitAny(ctx context.Context, thrs tany) {
 	gen.thr = NewThrottlerAny(genthrs...)
 }
 
-func (gen *generator) tvisitNot(ctx context.Context, thr tnot) {
+func (gen *generator) tvisitNot(ctx context.Context, thr *tnot) {
 	gen = NewGenerator(thr)
 	gen.thr = NewThrottlerNot(gen.Generate(ctx, nil))
 }
