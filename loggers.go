@@ -50,7 +50,7 @@ func (logb *logbuffer) lnext() func() {
 	return func() { logb.level-- }
 }
 
-func (logb *logbuffer) tvisitEcho(ctx context.Context, thr techo) {
+func (logb *logbuffer) tvisitEcho(ctx context.Context, thr *techo) {
 	message := ""
 	if thr.err != nil {
 		message = thr.err.Error()
@@ -58,55 +58,55 @@ func (logb *logbuffer) tvisitEcho(ctx context.Context, thr techo) {
 	logb.write("echo", message)
 }
 
-func (logb *logbuffer) tvisitWait(ctx context.Context, thr twait) {
+func (logb *logbuffer) tvisitWait(ctx context.Context, thr *twait) {
 	logb.write("wait", thr.duration.String())
 }
 
-func (logb *logbuffer) tvisitPanic(ctx context.Context, thr tpanic) {
+func (logb *logbuffer) tvisitPanic(ctx context.Context, thr *tpanic) {
 	logb.write("panic", "")
 }
 
-func (logb *logbuffer) tvisitEach(ctx context.Context, thr teach) {
+func (logb *logbuffer) tvisitEach(ctx context.Context, thr *teach) {
 	logb.write("each", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
 }
 
-func (logb *logbuffer) tvisitAfter(ctx context.Context, thr tafter) {
+func (logb *logbuffer) tvisitAfter(ctx context.Context, thr *tafter) {
 	logb.write("after", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
 }
 
-func (logb *logbuffer) tvisitChance(ctx context.Context, thr tchance) {
+func (logb *logbuffer) tvisitChance(ctx context.Context, thr *tchance) {
 	logb.write("chance", fmt.Sprintf("%f", thr.percentage))
 }
 
-func (logb *logbuffer) tvisitFixed(ctx context.Context, thr tfixed) {
+func (logb *logbuffer) tvisitFixed(ctx context.Context, thr *tfixed) {
 	logb.write("fixed", fmt.Sprintf("%d of %d", thr.current, thr.limit))
 }
 
-func (logb *logbuffer) tvisitRunning(ctx context.Context, thr trunning) {
+func (logb *logbuffer) tvisitRunning(ctx context.Context, thr *trunning) {
 	logb.write("running", fmt.Sprintf("%d of %d", thr.running, thr.limit))
 }
 
-func (logb *logbuffer) tvisitBuffered(ctx context.Context, thr tbuffered) {
+func (logb *logbuffer) tvisitBuffered(ctx context.Context, thr *tbuffered) {
 	logb.write("buffered", fmt.Sprintf("%d", len(thr.running)))
 }
 
-func (logb *logbuffer) tvisitPriority(ctx context.Context, thr tpriority) {
+func (logb *logbuffer) tvisitPriority(ctx context.Context, thr *tpriority) {
 	logb.write("priority", fmt.Sprintf("%d with %d", thr.size, thr.limit))
 }
 
-func (logb *logbuffer) tvisitTimed(ctx context.Context, thr ttimed) {
+func (logb *logbuffer) tvisitTimed(ctx context.Context, thr *ttimed) {
 	logb.write("timed", fmt.Sprintf("%d of %d in %s", thr.current, thr.limit, thr.interval))
 }
 
-func (logb *logbuffer) tvisitMonitor(ctx context.Context, thr tmonitor) {
+func (logb *logbuffer) tvisitMonitor(ctx context.Context, thr *tmonitor) {
 	logb.write("monitor", fmt.Sprintf("%+v", thr.limit))
 }
 
-func (logb *logbuffer) tvisitMetric(ctx context.Context, thr tmetric) {
+func (logb *logbuffer) tvisitMetric(ctx context.Context, thr *tmetric) {
 	logb.write("metric", "")
 }
 
-func (logb *logbuffer) tvisitLatency(ctx context.Context, thr tlatency) {
+func (logb *logbuffer) tvisitLatency(ctx context.Context, thr *tlatency) {
 	logb.write("latency", fmt.Sprintf(
 		"%s of %s in %s",
 		time.Duration(thr.latency),
@@ -115,7 +115,7 @@ func (logb *logbuffer) tvisitLatency(ctx context.Context, thr tlatency) {
 	))
 }
 
-func (logb *logbuffer) tvisitPercentile(ctx context.Context, thr tpercentile) {
+func (logb *logbuffer) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 	logb.write("percentile", fmt.Sprintf(
 		"%v of %s with %f in %s",
 		thr.latencies,
@@ -125,7 +125,7 @@ func (logb *logbuffer) tvisitPercentile(ctx context.Context, thr tpercentile) {
 	))
 }
 
-func (logb *logbuffer) tvisitAdaptive(ctx context.Context, thr tadaptive) {
+func (logb *logbuffer) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	logb.write("adaptive", fmt.Sprintf(
 		"%d of %d in %s with %d",
 		thr.current,
@@ -138,15 +138,15 @@ func (logb *logbuffer) tvisitAdaptive(ctx context.Context, thr tadaptive) {
 	thr.thr.accept(ctx, logb)
 }
 
-func (logb *logbuffer) tvisitContext(ctx context.Context, thr tcontext) {
+func (logb *logbuffer) tvisitContext(ctx context.Context, thr *tcontext) {
 	logb.write("context", "")
 }
 
-func (logb *logbuffer) tvisitEnqueue(ctx context.Context, thr tenqueue) {
+func (logb *logbuffer) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 	logb.write("enqueue", "")
 }
 
-func (logb *logbuffer) tvisitKeyed(ctx context.Context, thr tkeyed) {
+func (logb *logbuffer) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 	logb.write("keyed", "")
 	lprev := logb.lnext()
 	defer lprev()
@@ -156,7 +156,8 @@ func (logb *logbuffer) tvisitKeyed(ctx context.Context, thr tkeyed) {
 	})
 }
 
-func (logb *logbuffer) tvisitAll(ctx context.Context, thrs tall) {
+func (logb *logbuffer) tvisitAll(ctx context.Context, thr *tall) {
+	thrs := *thr
 	logb.write("all", fmt.Sprintf("%d", len(thrs)))
 	lprev := logb.lnext()
 	defer lprev()
@@ -165,7 +166,8 @@ func (logb *logbuffer) tvisitAll(ctx context.Context, thrs tall) {
 	}
 }
 
-func (logb *logbuffer) tvisitAny(ctx context.Context, thrs tany) {
+func (logb *logbuffer) tvisitAny(ctx context.Context, thr *tany) {
+	thrs := *thr
 	logb.write("any", fmt.Sprintf("%d", len(thrs)))
 	lprev := logb.lnext()
 	defer lprev()
@@ -174,7 +176,7 @@ func (logb *logbuffer) tvisitAny(ctx context.Context, thrs tany) {
 	}
 }
 
-func (logb *logbuffer) tvisitNot(ctx context.Context, thr tnot) {
+func (logb *logbuffer) tvisitNot(ctx context.Context, thr *tnot) {
 	logb.write("not", "")
 	lprev := logb.lnext()
 	defer lprev()

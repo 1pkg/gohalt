@@ -23,7 +23,7 @@ func NewMeta(ctx context.Context, thr Throttler) Meta {
 	return mt
 }
 
-func (m *Meta) tvisitEcho(ctx context.Context, thr techo) {
+func (m *Meta) tvisitEcho(ctx context.Context, thr *techo) {
 	if thr.err != nil {
 		m.Limit = 0
 		m.Remaining = 0
@@ -31,72 +31,73 @@ func (m *Meta) tvisitEcho(ctx context.Context, thr techo) {
 	}
 }
 
-func (m *Meta) tvisitWait(ctx context.Context, thr twait) {
+func (m *Meta) tvisitWait(ctx context.Context, thr *twait) {
 }
 
-func (m *Meta) tvisitPanic(ctx context.Context, thr tpanic) {
+func (m *Meta) tvisitPanic(ctx context.Context, thr *tpanic) {
 	m.Limit = 0
 	m.Remaining = 0
 	m.Reset = math.MaxInt64
 }
 
-func (m *Meta) tvisitEach(ctx context.Context, thr teach) {
+func (m *Meta) tvisitEach(ctx context.Context, thr *teach) {
 }
 
-func (m *Meta) tvisitAfter(ctx context.Context, thr tafter) {
+func (m *Meta) tvisitAfter(ctx context.Context, thr *tafter) {
 }
 
-func (m *Meta) tvisitChance(ctx context.Context, thr tchance) {
+func (m *Meta) tvisitChance(ctx context.Context, thr *tchance) {
 }
 
-func (m *Meta) tvisitFixed(ctx context.Context, thr tfixed) {
+func (m *Meta) tvisitFixed(ctx context.Context, thr *tfixed) {
 	m.Limit = thr.limit
 	m.Remaining = thr.limit - thr.current
 }
 
-func (m *Meta) tvisitRunning(ctx context.Context, thr trunning) {
+func (m *Meta) tvisitRunning(ctx context.Context, thr *trunning) {
 }
 
-func (m *Meta) tvisitBuffered(ctx context.Context, thr tbuffered) {
+func (m *Meta) tvisitBuffered(ctx context.Context, thr *tbuffered) {
 }
 
-func (m *Meta) tvisitPriority(ctx context.Context, thr tpriority) {
+func (m *Meta) tvisitPriority(ctx context.Context, thr *tpriority) {
 }
 
-func (m *Meta) tvisitTimed(ctx context.Context, thr ttimed) {
-	m.Limit = thr.limit
-	m.Remaining = thr.limit - thr.current
-	m.Reset = thr.interval
-}
-
-func (m *Meta) tvisitMonitor(ctx context.Context, thr tmonitor) {
-}
-
-func (m *Meta) tvisitMetric(ctx context.Context, thr tmetric) {
-}
-
-func (m *Meta) tvisitLatency(ctx context.Context, thr tlatency) {
-}
-
-func (m *Meta) tvisitPercentile(ctx context.Context, thr tpercentile) {
-}
-
-func (m *Meta) tvisitAdaptive(ctx context.Context, thr tadaptive) {
+func (m *Meta) tvisitTimed(ctx context.Context, thr *ttimed) {
 	m.Limit = thr.limit
 	m.Remaining = thr.limit - thr.current
 	m.Reset = thr.interval
 }
 
-func (m *Meta) tvisitContext(ctx context.Context, thr tcontext) {
+func (m *Meta) tvisitMonitor(ctx context.Context, thr *tmonitor) {
 }
 
-func (m *Meta) tvisitEnqueue(ctx context.Context, thr tenqueue) {
+func (m *Meta) tvisitMetric(ctx context.Context, thr *tmetric) {
 }
 
-func (m *Meta) tvisitKeyed(ctx context.Context, thr tkeyed) {
+func (m *Meta) tvisitLatency(ctx context.Context, thr *tlatency) {
 }
 
-func (m *Meta) tvisitAll(ctx context.Context, thrs tall) {
+func (m *Meta) tvisitPercentile(ctx context.Context, thr *tpercentile) {
+}
+
+func (m *Meta) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
+	m.Limit = thr.limit
+	m.Remaining = thr.limit - thr.current
+	m.Reset = thr.interval
+}
+
+func (m *Meta) tvisitContext(ctx context.Context, thr *tcontext) {
+}
+
+func (m *Meta) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
+}
+
+func (m *Meta) tvisitKeyed(ctx context.Context, thr *tkeyed) {
+}
+
+func (m *Meta) tvisitAll(ctx context.Context, thr *tall) {
+	thrs := *thr
 	for _, thr := range thrs {
 		tm := DefaultMeta
 		thr.accept(ctx, &tm)
@@ -112,7 +113,8 @@ func (m *Meta) tvisitAll(ctx context.Context, thrs tall) {
 	}
 }
 
-func (m *Meta) tvisitAny(ctx context.Context, thrs tany) {
+func (m *Meta) tvisitAny(ctx context.Context, thr *tany) {
+	thrs := *thr
 	for _, thr := range thrs {
 		tm := DefaultMeta
 		thr.accept(ctx, &tm)
@@ -128,5 +130,5 @@ func (m *Meta) tvisitAny(ctx context.Context, thrs tany) {
 	}
 }
 
-func (m *Meta) tvisitNot(ctx context.Context, thr tnot) {
+func (m *Meta) tvisitNot(ctx context.Context, thr *tnot) {
 }
