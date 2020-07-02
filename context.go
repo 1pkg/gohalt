@@ -13,6 +13,21 @@ const (
 	gohaltctxmarshaler = "gohalt_context_marshaler"
 )
 
+func WithParams(
+	ctx context.Context,
+	priority uint8,
+	key interface{},
+	data interface{},
+	marshaler Marshaler,
+) context.Context {
+	ctx = WithPriority(ctx, priority)
+	ctx = WithKey(ctx, key)
+	ctx = WithData(ctx, data)
+	ctx = WithTimestamp(ctx)
+	ctx = WithMarshaler(ctx, marshaler)
+	return ctx
+}
+
 func WithPriority(ctx context.Context, priority uint8) context.Context {
 	if priority == 0 {
 		priority = 1
