@@ -3,13 +3,13 @@ package gohalt
 import (
 	"context"
 	"math"
-	"time"
+	"strconv"
 )
 
 type Meta struct {
 	Limit     uint64
 	Remaining uint64
-	Reset     time.Duration
+	Reset     uint64
 }
 
 var DefaultMeta Meta = Meta{
@@ -23,11 +23,19 @@ func NewMeta(ctx context.Context, thr Throttler) Meta {
 	return mt
 }
 
+func (m Meta) Headers() map[string]string {
+	return map[string]string{
+		"X-RateLimit-Limit":     strconv.FormatUint(m.Limit, 10),
+		"X-RateLimit-Remaining": strconv.FormatUint(m.Remaining, 10),
+		"X-RateLimit-Reset":     strconv.FormatUint(m.Reset, 10),
+	}
+}
+
 func (m *Meta) tvisitEcho(ctx context.Context, thr *techo) {
 	if thr.err != nil {
 		m.Limit = 0
 		m.Remaining = 0
-		m.Reset = math.MaxInt64
+		m.Reset = math.MaxUint64
 	}
 }
 
@@ -37,7 +45,7 @@ func (m *Meta) tvisitWait(ctx context.Context, thr *twait) {
 func (m *Meta) tvisitPanic(ctx context.Context, thr *tpanic) {
 	m.Limit = 0
 	m.Remaining = 0
-	m.Reset = math.MaxInt64
+	m.Reset = math.MaxUint64
 }
 
 func (m *Meta) tvisitEach(ctx context.Context, thr *teach) {
@@ -66,7 +74,7 @@ func (m *Meta) tvisitPriority(ctx context.Context, thr *tpriority) {
 func (m *Meta) tvisitTimed(ctx context.Context, thr *ttimed) {
 	m.Limit = thr.limit
 	m.Remaining = thr.limit - thr.current
-	m.Reset = thr.interval
+	m.Reset = uint64(thr.interval)
 }
 
 func (m *Meta) tvisitMonitor(ctx context.Context, thr *tmonitor) {
@@ -84,7 +92,7 @@ func (m *Meta) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 func (m *Meta) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	m.Limit = thr.limit
 	m.Remaining = thr.limit - thr.current
-	m.Reset = thr.interval
+	m.Reset = uint64(thr.interval)
 }
 
 func (m *Meta) tvisitContext(ctx context.Context, thr *tcontext) {
