@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-kit/kit/endpoint"
 	"github.com/labstack/echo/v4"
 )
 
@@ -91,7 +92,7 @@ func EchoOnTooManyRequests(ectx echo.Context, err error) error {
 	return err
 }
 
-func RecoverWithConfig(ctx context.Context, thr Throttler, ekey EchoKey, eon EchoOn) echo.MiddlewareFunc {
+func NewMiddlewareEcho(ctx context.Context, thr Throttler, ekey EchoKey, eon EchoOn) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
 			ctx = WithKey(ctx, ekey(ectx))
@@ -107,6 +108,36 @@ func RecoverWithConfig(ctx context.Context, thr Throttler, ekey EchoKey, eon Ech
 				return eon(ectx, err)
 			}
 			return nil
+		}
+	}
+}
+
+type KitKey func(interface{}) interface{}
+
+func KitKeyReq(req interface{}) interface{} {
+	return req
+}
+
+type KitOn func(error) error
+
+func KitOnEcho(err error) error {
+	return err
+}
+
+func NewMiddlewareKit(ctx context.Context, thr Throttler, kkey KitKey, kon KitOn) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
+		return func(ctx context.Context, req interface{}) (interface{}, error) {
+			ctx = WithKey(ctx, kkey(req))
+			r := NewRunnerSync(ctx, thr)
+			r.Run(func(ctx context.Context) error {
+				var err error
+				req, err = next(ctx, req)
+				return err
+			})
+			if err := r.Result(); err != nil {
+				return nil, kon(err)
+			}
+			return req, nil
 		}
 	}
 }
