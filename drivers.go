@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +17,7 @@ func GinKeyIP(gctx *gin.Context) interface{} {
 type GinOn func(*gin.Context, error)
 
 func GinOnTooManyRequests(gctx *gin.Context, err error) {
-	gctx.AbortWithStatus(http.StatusTooManyRequests)
+	gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
 func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn) gin.HandlerFunc {
@@ -35,4 +36,43 @@ func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn
 			gon(gctx, err)
 		}
 	}
+}
+
+type StdHttpKey func(*http.Request) interface{}
+
+func StdHttpIP(req *http.Request) interface{} {
+	first := func(ip string) string {
+		return strings.TrimSpace(strings.Split(ip, ",")[0])
+	}
+	if ip := strings.TrimSpace(req.Header.Get("X-Real-Ip")); ip != "" {
+		return first(ip)
+	}
+	if ip := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); ip != "" {
+		return first(ip)
+	}
+	return first(req.RemoteAddr)
+}
+
+type StdHttpOn func(http.ResponseWriter, error)
+
+func StdHttpOnTooManyRequests(w http.ResponseWriter, err error) {
+	http.Error(w, err.Error(), http.StatusTooManyRequests)
+}
+
+func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, shkey StdHttpKey, shon StdHttpOn) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx = WithKey(ctx, shkey(req))
+		r := NewRunnerSync(ctx, thr)
+		r.Run(func(ctx context.Context) error {
+			headers := NewMeta(ctx, thr).Headers()
+			for key, val := range headers {
+				w.Header().Add(key, val)
+			}
+			h.ServeHTTP(w, req)
+			return nil
+		})
+		if err := r.Result(); err != nil {
+			shon(w, err)
+		}
+	})
 }
