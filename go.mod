@@ -7,6 +7,7 @@ require (
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/dgraph-io/ristretto v0.0.2 // indirect
 	github.com/gin-gonic/gin v1.6.3
+	github.com/go-kit/kit v0.10.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-playground/validator/v10 v10.3.0 // indirect
 	github.com/kr/pretty v0.2.0 // indirect
