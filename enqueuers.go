@@ -23,9 +23,9 @@ type enqamqp struct {
 	exchange   string
 }
 
-func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) *enqamqp {
+func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) enqamqp {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
-	enq := &enqamqp{queue: queue, exchange: exchange}
+	enq := enqamqp{queue: queue, exchange: exchange}
 	var lock sync.Mutex
 	enq.memconnect = cached(cahce, func(ctx context.Context) error {
 		lock.Lock()
@@ -38,7 +38,7 @@ func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) *enqamqp {
 	return enq
 }
 
-func (enq *enqamqp) Enqueue(ctx context.Context, message []byte) error {
+func (enq enqamqp) Enqueue(ctx context.Context, message []byte) error {
 	if err := enq.memconnect(ctx); err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (enq *enqamqp) Enqueue(ctx context.Context, message []byte) error {
 	)
 }
 
-func (enq *enqamqp) close(context.Context) error {
+func (enq enqamqp) close(context.Context) error {
 	if enq.channel == nil || enq.connection == nil {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (enq *enqamqp) close(context.Context) error {
 	return enq.connection.Close()
 }
 
-func (enq *enqamqp) connect(ctx context.Context, url string) error {
+func (enq enqamqp) connect(ctx context.Context, url string) error {
 	connection, err := amqp.Dial(url)
 	if err != nil {
 		return err
@@ -92,8 +92,8 @@ type enqkafka struct {
 	connection *kafka.Conn
 }
 
-func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) *enqkafka {
-	enq := &enqkafka{}
+func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) enqkafka {
+	enq := enqkafka{}
 	var lock sync.Mutex
 	enq.memconnect = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
@@ -106,7 +106,7 @@ func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration)
 	return enq
 }
 
-func (enq *enqkafka) Enqueue(ctx context.Context, message []byte) error {
+func (enq enqkafka) Enqueue(ctx context.Context, message []byte) error {
 	if err := enq.memconnect(ctx); err != nil {
 		return err
 	}
@@ -120,14 +120,14 @@ func (enq *enqkafka) Enqueue(ctx context.Context, message []byte) error {
 	return nil
 }
 
-func (enq *enqkafka) close(ctx context.Context) error {
+func (enq enqkafka) close(ctx context.Context) error {
 	if enq.connection == nil {
 		return nil
 	}
 	return enq.connection.Close()
 }
 
-func (enq *enqkafka) connect(ctx context.Context, net string, url string, topic string) error {
+func (enq enqkafka) connect(ctx context.Context, net string, url string, topic string) error {
 	connection, err := kafka.DialLeader(ctx, net, url, topic, 0)
 	if err != nil {
 		return err

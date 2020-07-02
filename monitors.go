@@ -36,7 +36,7 @@ func NewMonitor(cache time.Duration) *monitor {
 	return mnt
 }
 
-func (mnt monitor) Stats(ctx context.Context) (Stats, error) {
+func (mnt *monitor) Stats(ctx context.Context) (Stats, error) {
 	if err := mnt.memsync(ctx); err != nil {
 		return mnt.stats, err
 	}
