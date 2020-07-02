@@ -118,26 +118,25 @@ func KitKeyReq(req interface{}) interface{} {
 	return req
 }
 
-type KitOn func(error) error
+type KitOn func(error) (interface{}, error)
 
-func KitOnEcho(err error) error {
-	return err
+func KitOnEcho(err error) (interface{}, error) {
+	return nil, err
 }
 
 func NewMiddlewareKit(ctx context.Context, thr Throttler, kkey KitKey, kon KitOn) endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
-		return func(ctx context.Context, req interface{}) (interface{}, error) {
+		return func(ctx context.Context, req interface{}) (resp interface{}, err error) {
 			ctx = WithKey(ctx, kkey(req))
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
-				var err error
-				req, err = next(ctx, req)
+				resp, err = next(ctx, req)
 				return err
 			})
 			if err := r.Result(); err != nil {
-				return nil, kon(err)
+				return kon(err)
 			}
-			return req, nil
+			return resp, nil
 		}
 	}
 }
