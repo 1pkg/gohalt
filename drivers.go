@@ -2,24 +2,37 @@ package gohalt
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
-func NewMiddlewareGin(ctx context.Context, thr Throttler) gin.HandlerFunc {
+type GinKey func(*gin.Context) interface{}
+
+func GinKeyIP(gctx *gin.Context) interface{} {
+	return gctx.ClientIP()
+}
+
+type GinOn func(*gin.Context, error)
+
+func GinOnTooManyRequests(gctx *gin.Context, err error) {
+	gctx.AbortWithStatus(http.StatusTooManyRequests)
+}
+
+func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
-		ip := gctx.ClientIP()
-		ctx = WithKey(ctx, ip)
-		if err := thr.Acquire(ctx); err != nil {
-			gctx.Abort()
-			return
-		}
-		defer func() {
-			if err := thr.Release(ctx); err != nil {
-				gctx.Abort()
-				return
+		ctx = WithKey(ctx, gkey(gctx))
+		r := NewRunnerSync(ctx, thr)
+		r.Run(func(ctx context.Context) error {
+			headers := NewMeta(ctx, thr).Headers()
+			for key, val := range headers {
+				gctx.Header(key, val)
 			}
-		}()
-		gctx.Next()
+			gctx.Next()
+			return nil
+		})
+		if err := r.Result(); err != nil {
+			gon(gctx, err)
+		}
 	}
 }
