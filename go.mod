@@ -10,6 +10,7 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-playground/validator/v10 v10.3.0 // indirect
 	github.com/kr/pretty v0.2.0 // indirect
+	github.com/labstack/echo/v4 v4.1.16
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.7.0
 	github.com/prometheus/common v0.10.0
