@@ -12,21 +12,21 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type KeyGin func(*gin.Context) interface{}
+type GinKey func(*gin.Context) interface{}
 
-func KeyGinIP(gctx *gin.Context) interface{} {
+func GinKeyIP(gctx *gin.Context) interface{} {
 	return gctx.ClientIP()
 }
 
-type OnGin func(*gin.Context, error)
+type GinOn func(*gin.Context, error)
 
-func OnGinAbort(gctx *gin.Context, err error) {
+func GinOnAbort(gctx *gin.Context, err error) {
 	_ = gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
-func NewMiddlewareGin(ctx context.Context, thr Throttler, keyg KeyGin, ong OnGin) gin.HandlerFunc {
+func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
-		ctx = WithKey(ctx, keyg(gctx))
+		ctx = WithKey(ctx, gkey(gctx))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -37,14 +37,14 @@ func NewMiddlewareGin(ctx context.Context, thr Throttler, keyg KeyGin, ong OnGin
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			ong(gctx, err)
+			gon(gctx, err)
 		}
 	}
 }
 
-type KeyStdHttp func(*http.Request) interface{}
+type StdHttpKey func(*http.Request) interface{}
 
-func KeyStdHttpIP(req *http.Request) interface{} {
+func StdHttpKeyIP(req *http.Request) interface{} {
 	first := func(ip string) string {
 		return strings.TrimSpace(strings.Split(ip, ",")[0])
 	}
@@ -57,15 +57,15 @@ func KeyStdHttpIP(req *http.Request) interface{} {
 	return first(req.RemoteAddr)
 }
 
-type OnStdHttp func(http.ResponseWriter, error)
+type StdHttpOn func(http.ResponseWriter, error)
 
-func OnStdHttpError(w http.ResponseWriter, err error) {
+func StdHttpOnError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusTooManyRequests)
 }
 
-func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, keystd KeyStdHttp, onstd OnStdHttp) http.Handler {
+func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, stdkey StdHttpKey, stdon StdHttpOn) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		ctx = WithKey(ctx, keystd(req))
+		ctx = WithKey(ctx, stdkey(req))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -76,27 +76,27 @@ func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, keyst
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			onstd(w, err)
+			stdon(w, err)
 		}
 	})
 }
 
-type KeyEcho func(echo.Context) interface{}
+type EchoKey func(echo.Context) interface{}
 
-func KeyEchoIP(ectx echo.Context) interface{} {
+func EchoKeyIP(ectx echo.Context) interface{} {
 	return ectx.RealIP()
 }
 
-type OnEcho func(echo.Context, error) error
+type EchoOn func(echo.Context, error) error
 
-func OnEchoError(ectx echo.Context, err error) error {
+func EchoOnError(ectx echo.Context, err error) error {
 	return ectx.String(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareEcho(ctx context.Context, thr Throttler, keye KeyEcho, one OnEcho) echo.MiddlewareFunc {
+func NewMiddlewareEcho(ctx context.Context, thr Throttler, ekey EchoKey, eon EchoOn) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
-			ctx = WithKey(ctx, keye(ectx))
+			ctx = WithKey(ctx, ekey(ectx))
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
 				headers := NewMeta(ctx, thr).Headers()
@@ -106,28 +106,28 @@ func NewMiddlewareEcho(ctx context.Context, thr Throttler, keye KeyEcho, one OnE
 				return next(ectx)
 			})
 			if err := r.Result(); err != nil {
-				return one(ectx, err)
+				return eon(ectx, err)
 			}
 			return nil
 		}
 	}
 }
 
-type KeyBeego func(*beegoctx.Context) interface{}
+type BeegoKey func(*beegoctx.Context) interface{}
 
-func KeyBeegoIP(bctx *beegoctx.Context) interface{} {
+func BeegoKeyIP(bctx *beegoctx.Context) interface{} {
 	return bctx.Input.IP()
 }
 
-type OnBeego func(*beegoctx.Context, error)
+type BeegoOn func(*beegoctx.Context, error)
 
-func OnBeegoAbort(bctx *beegoctx.Context, err error) {
+func BeegoOnAbort(bctx *beegoctx.Context, err error) {
 	bctx.Abort(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareBeego(ctx context.Context, thr Throttler, keyb KeyBeego, onb OnBeego) beego.FilterFunc {
+func NewMiddlewareBeego(ctx context.Context, thr Throttler, bkey BeegoKey, bon BeegoOn) beego.FilterFunc {
 	return func(bctx *beegoctx.Context) {
-		ctx = WithKey(ctx, keyb(bctx))
+		ctx = WithKey(ctx, bkey(bctx))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -137,34 +137,34 @@ func NewMiddlewareBeego(ctx context.Context, thr Throttler, keyb KeyBeego, onb O
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			onb(bctx, err)
+			bon(bctx, err)
 		}
 	}
 }
 
-type KeyKit func(interface{}) interface{}
+type KitKey func(interface{}) interface{}
 
-func KeyKitReq(req interface{}) interface{} {
+func KitKeyReq(req interface{}) interface{} {
 	return req
 }
 
-type OnKit func(error) (interface{}, error)
+type KitOn func(error) (interface{}, error)
 
-func OnKitEcho(err error) (interface{}, error) {
+func KitOnEcho(err error) (interface{}, error) {
 	return nil, err
 }
 
-func NewMiddlewareKit(ctx context.Context, thr Throttler, keyk KeyKit, onk OnKit) endpoint.Middleware {
+func NewMiddlewareKit(ctx context.Context, thr Throttler, kkey KitKey, kon KitOn) endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, req interface{}) (resp interface{}, err error) {
-			ctx = WithKey(ctx, keyk(req))
+			ctx = WithKey(ctx, kkey(req))
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
 				resp, err = next(ctx, req)
 				return err
 			})
 			if err := r.Result(); err != nil {
-				return onk(err)
+				return kon(err)
 			}
 			return resp, nil
 		}
