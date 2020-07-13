@@ -329,9 +329,9 @@ func NewThrottlerTimed(ctx context.Context, limit uint64, interval time.Duration
 		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
 		window /= slide
 	}
-	loop(window, func(ctx context.Context) error {
+	_ = loop(window, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.current, ^uint64(delta-1))
-		if current := atomic.LoadUint64(&thr.current); current < 0 {
+		if current := atomic.LoadUint64(&thr.current); current >= ^uint64(0) {
 			atomic.StoreUint64(&thr.current, 0)
 		}
 		return ctx.Err()
@@ -439,7 +439,7 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
 		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 		atomic.StoreUint64(&thr.latency, latency)
-		once(thr.retention, func(context.Context) error {
+		_ = once(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
 			return nil
 		})(ctx)
@@ -474,7 +474,7 @@ func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
 	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
-		once(thr.retention, func(context.Context) error {
+		_ = once(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
 			return nil
 		})(ctx)
@@ -628,27 +628,21 @@ func (thr tall) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
-	err := errors.New("throttler error has happened")
 	for _, thr := range thrs {
-		if threrr := thr.Acquire(ctx); threrr != nil {
-			err = fmt.Errorf("%w %w", err, threrr)
-			continue
+		if err := thr.Acquire(ctx); err == nil {
+			return nil
 		}
-		return nil
 	}
-	return err
+	return errors.New("throttler child errors have happened")
 }
 
 func (thrs tall) Release(ctx context.Context) error {
-	err := errors.New("throttler error has happened")
 	for _, thr := range thrs {
-		if threrr := thr.Release(ctx); threrr != nil {
-			err = fmt.Errorf("%w %w", err, threrr)
-			continue
+		if err := thr.Release(ctx); err == nil {
+			return nil
 		}
-		return nil
 	}
-	return err
+	return errors.New("throttler child errors have happened")
 }
 
 type tany []Throttler
@@ -662,48 +656,32 @@ func (thr tany) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {
-	var wg sync.WaitGroup
-	errs := make(chan error)
+	var err error
+	var once sync.Once
 	for _, thr := range thrs {
-		wg.Add(1)
 		go func(thr Throttler) {
-			if err := thr.Acquire(ctx); err != nil {
-				errs <- err
+			if threrr := thr.Acquire(ctx); threrr != nil {
+				once.Do(func() {
+					err = fmt.Errorf("throttler child error has happened %w", threrr)
+				})
 			}
-			wg.Done()
 		}(thr)
 	}
-	err := errors.New("throttler error has happened")
-	go func() {
-		for threrr := range errs {
-			err = fmt.Errorf("%w\n%w", err, threrr)
-		}
-	}()
-	wg.Wait()
-	close(errs)
 	return err
 }
 
 func (thrs tany) Release(ctx context.Context) error {
-	var wg sync.WaitGroup
-	errs := make(chan error)
+	var err error
+	var once sync.Once
 	for _, thr := range thrs {
-		wg.Add(1)
 		go func(thr Throttler) {
-			if err := thr.Release(ctx); err != nil {
-				errs <- err
+			if threrr := thr.Release(ctx); threrr != nil {
+				once.Do(func() {
+					err = fmt.Errorf("throttler child error has happened %w", threrr)
+				})
 			}
-			wg.Done()
 		}(thr)
 	}
-	err := errors.New("throttler error has happened")
-	go func() {
-		for threrr := range errs {
-			err = fmt.Errorf("%w\n%w", err, threrr)
-		}
-	}()
-	wg.Wait()
-	close(errs)
 	return err
 }
 
@@ -723,12 +701,12 @@ func (thr tnot) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler error has happened")
+	return errors.New("throttler child error hasn't happened")
 }
 
 func (thr tnot) Release(ctx context.Context) error {
 	if err := thr.thr.Release(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler error has happened")
+	return errors.New("throttler child error hasn't happened")
 }

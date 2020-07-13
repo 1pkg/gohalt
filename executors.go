@@ -39,7 +39,7 @@ func once(after time.Duration, run Runnable) Runnable {
 			tick := time.NewTicker(after)
 			defer tick.Stop()
 			<-tick.C
-			run(ctx)
+			_ = run(ctx)
 		}()
 		return nil
 	}

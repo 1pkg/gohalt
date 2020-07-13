@@ -21,7 +21,7 @@ func KeyGinIP(gctx *gin.Context) interface{} {
 type OnGin func(*gin.Context, error)
 
 func OnGinAbort(gctx *gin.Context, err error) {
-	gctx.AbortWithError(http.StatusTooManyRequests, err)
+	_ = gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
 func NewMiddlewareGin(ctx context.Context, thr Throttler, keyg KeyGin, ong OnGin) gin.HandlerFunc {
@@ -90,8 +90,7 @@ func KeyEchoIP(ectx echo.Context) interface{} {
 type OnEcho func(echo.Context, error) error
 
 func OnEchoError(ectx echo.Context, err error) error {
-	ectx.String(http.StatusTooManyRequests, err.Error())
-	return err
+	return ectx.String(http.StatusTooManyRequests, err.Error())
 }
 
 func NewMiddlewareEcho(ctx context.Context, thr Throttler, keye KeyEcho, one OnEcho) echo.MiddlewareFunc {
