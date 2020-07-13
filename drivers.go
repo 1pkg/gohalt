@@ -12,6 +12,7 @@ import (
 	"github.com/kataras/iris/v12"
 	"github.com/labstack/echo/v4"
 	"github.com/revel/revel"
+	"github.com/valyala/fasthttp"
 )
 
 type GinKey func(*gin.Context) interface{}
@@ -44,9 +45,9 @@ func NewHandlerGin(ctx context.Context, thr Throttler, key GinKey, on GinOn) gin
 	}
 }
 
-type StdHttpKey func(*http.Request) interface{}
+type StdKey func(*http.Request) interface{}
 
-func StdHttpKeyIP(req *http.Request) interface{} {
+func StdKeyIP(req *http.Request) interface{} {
 	first := func(ip string) string {
 		return strings.TrimSpace(strings.Split(ip, ",")[0])
 	}
@@ -59,13 +60,13 @@ func StdHttpKeyIP(req *http.Request) interface{} {
 	return first(req.RemoteAddr)
 }
 
-type StdHttpOn func(http.ResponseWriter, error)
+type StdOn func(http.ResponseWriter, error)
 
-func StdHttpOnError(w http.ResponseWriter, err error) {
+func StdOnError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusTooManyRequests)
 }
 
-func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, key StdHttpKey, on StdHttpOn) http.Handler {
+func NewStdHandler(ctx context.Context, h http.Handler, thr Throttler, key StdKey, on StdOn) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx = WithKey(ctx, key(req))
 		r := NewRunnerSync(ctx, thr)
@@ -173,36 +174,36 @@ func NewMiddlewareKit(ctx context.Context, thr Throttler, key KitKey, on KitOn) 
 	}
 }
 
-type MuxKey StdHttpKey
+type MuxKey StdKey
 
 func MuxKeyIP(req *http.Request) interface{} {
-	return StdHttpKeyIP(req)
+	return StdKeyIP(req)
 }
 
-type MuxOn StdHttpOn
+type MuxOn StdOn
 
 func MuxOnError(w http.ResponseWriter, err error) {
-	StdHttpOnError(w, err)
+	StdOnError(w, err)
 }
 
 func NewMuxHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
-	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(key), StdHttpOn(on))
+	return NewStdHandler(ctx, h, thr, StdKey(key), StdOn(on))
 }
 
-type RouterKey StdHttpKey
+type RouterKey StdKey
 
 func RouterKeyIP(req *http.Request) interface{} {
-	return StdHttpKeyIP(req)
+	return StdKeyIP(req)
 }
 
-type RouterOn StdHttpOn
+type RouterOn StdOn
 
 func RouterOnError(w http.ResponseWriter, err error) {
-	StdHttpOnError(w, err)
+	StdOnError(w, err)
 }
 
 func NewRouterHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
-	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(key), StdHttpOn(on))
+	return NewStdHandler(ctx, h, thr, StdKey(key), StdOn(on))
 }
 
 type RevealKey func(*revel.Controller) interface{}
@@ -246,8 +247,8 @@ func IrisKeyIP(ictx iris.Context) interface{} {
 type IrisOn func(iris.Context, error)
 
 func IrisOnError(ictx iris.Context, err error) {
-	_, _ = ictx.WriteString(err.Error())
 	ictx.StatusCode(http.StatusTooManyRequests)
+	_, _ = ictx.WriteString(err.Error())
 }
 
 func NewHandlerIris(ctx context.Context, thr Throttler, key IrisKey, on IrisOn) iris.Handler {
@@ -264,6 +265,36 @@ func NewHandlerIris(ctx context.Context, thr Throttler, key IrisKey, on IrisOn) 
 		})
 		if err := r.Result(); err != nil {
 			on(ictx, err)
+		}
+	}
+}
+
+type FastKey func(*fasthttp.RequestCtx) interface{}
+
+func FastKeyIP(fctx *fasthttp.RequestCtx) interface{} {
+	return fctx.RemoteIP()
+}
+
+type FastOn func(*fasthttp.RequestCtx, error)
+
+func FastOnError(fctx *fasthttp.RequestCtx, err error) {
+	fctx.Error(err.Error(), fasthttp.StatusTooManyRequests)
+}
+
+func NewHandlerFast(ctx context.Context, h fasthttp.RequestHandler, thr Throttler, key FastKey, on FastOn) fasthttp.RequestHandler {
+	return func(fctx *fasthttp.RequestCtx) {
+		ctx = WithKey(ctx, key(fctx))
+		r := NewRunnerSync(ctx, thr)
+		r.Run(func(ctx context.Context) error {
+			headers := NewMeta(ctx, thr).Headers()
+			for key, val := range headers {
+				fctx.Response.Header.Add(key, val)
+			}
+			h(fctx)
+			return nil
+		})
+		if err := r.Result(); err != nil {
+			on(fctx, err)
 		}
 	}
 }
