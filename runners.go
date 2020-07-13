@@ -35,7 +35,6 @@ func (r *rsync) Run(run Runnable) {
 		if err := r.thr.Release(r.ctx); err != nil {
 			r.report(fmt.Errorf("throttler error has happened %w", err))
 		}
-		return
 	}()
 	if err := r.thr.Acquire(r.ctx); err != nil {
 		r.report(fmt.Errorf("throttler error has happened %w", err))
@@ -86,7 +85,6 @@ func (r *rasync) Run(run Runnable) {
 				r.report(fmt.Errorf("throttler error has happened %w", err))
 			}
 			r.wg.Done()
-			return
 		}()
 		if err := r.thr.Acquire(r.ctx); err != nil {
 			r.report(fmt.Errorf("throttler error has happened %w", err))
