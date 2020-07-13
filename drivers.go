@@ -170,3 +170,19 @@ func NewMiddlewareKit(ctx context.Context, thr Throttler, kkey KitKey, kon KitOn
 		}
 	}
 }
+
+type MuxKey StdHttpKey
+
+func MuxIP(req *http.Request) interface{} {
+	return StdHttpKeyIP(req)
+}
+
+type MuxOn StdHttpOn
+
+func MuxOnError(w http.ResponseWriter, err error) {
+	StdHttpOnError(w, err)
+}
+
+func NewMuxHandler(ctx context.Context, h http.Handler, thr Throttler, mkey MuxKey, mon MuxOn) http.Handler {
+	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(mkey), StdHttpOn(mon))
+}
