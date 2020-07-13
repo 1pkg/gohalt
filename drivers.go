@@ -9,6 +9,7 @@ import (
 	beegoctx "github.com/astaxie/beego/context"
 	"github.com/gin-gonic/gin"
 	"github.com/go-kit/kit/endpoint"
+	"github.com/kataras/iris/v12"
 	"github.com/labstack/echo/v4"
 	"github.com/revel/revel"
 )
@@ -151,7 +152,7 @@ func KitKeyReq(req interface{}) interface{} {
 
 type KitOn func(error) (interface{}, error)
 
-func KitOnEcho(err error) (interface{}, error) {
+func KitOnError(err error) (interface{}, error) {
 	return nil, err
 }
 
@@ -206,30 +207,63 @@ func NewRouterHandler(ctx context.Context, h http.Handler, thr Throttler, key Mu
 
 type RevealKey func(*revel.Controller) interface{}
 
-func RevealKeyIp(c *revel.Controller) interface{} {
-	return c.ClientIP
+func RevealKeyIp(rc *revel.Controller) interface{} {
+	return rc.ClientIP
 }
 
 type RevealOn func(error) revel.Result
 
-func RevealOnError(c *revel.Controller, err error) revel.Result {
-	return c.RenderError(err)
+func RevealOnError(rc *revel.Controller, err error) revel.Result {
+	result := rc.RenderError(err)
+	rc.Response.Status = http.StatusTooManyRequests
+	return result
 }
 
 func NewRevelFilter(ctx context.Context, thr Throttler, key RevealKey, on RevealOn) revel.Filter {
-	return func(c *revel.Controller, chain []revel.Filter) {
-		ctx = WithKey(ctx, key(c))
+	return func(rc *revel.Controller, chain []revel.Filter) {
+		ctx = WithKey(ctx, key(rc))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
-				c.Response.Out.Header().Add(key, val)
+				rc.Response.Out.Header().Add(key, val)
 			}
-			chain[0](c, chain[1:])
+			chain[0](rc, chain[1:])
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			c.Result = on(err)
+			rc.Result = on(err)
+		}
+	}
+}
+
+type IrisKey func(iris.Context) interface{}
+
+func IrisKeyIP(ictx iris.Context) interface{} {
+	return ictx.RemoteAddr()
+}
+
+type IrisOn func(iris.Context, error)
+
+func IrisOnError(ictx iris.Context, err error) {
+	_, _ = ictx.WriteString(err.Error())
+	ictx.StatusCode(http.StatusTooManyRequests)
+}
+
+func NewHandlerIris(ctx context.Context, thr Throttler, key IrisKey, on IrisOn) iris.Handler {
+	return func(ictx iris.Context) {
+		ctx = WithKey(ctx, key(ictx))
+		r := NewRunnerSync(ctx, thr)
+		r.Run(func(ctx context.Context) error {
+			headers := NewMeta(ctx, thr).Headers()
+			for key, val := range headers {
+				ictx.Header(key, val)
+			}
+			ictx.Next()
+			return nil
+		})
+		if err := r.Result(); err != nil {
+			on(ictx, err)
 		}
 	}
 }
