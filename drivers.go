@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-kit/kit/endpoint"
 	"github.com/labstack/echo/v4"
+	"github.com/revel/revel"
 )
 
 type GinKey func(*gin.Context) interface{}
@@ -24,9 +25,9 @@ func GinOnAbort(gctx *gin.Context, err error) {
 	_ = gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
-func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn) gin.HandlerFunc {
+func NewHandlerGin(ctx context.Context, thr Throttler, key GinKey, on GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
-		ctx = WithKey(ctx, gkey(gctx))
+		ctx = WithKey(ctx, key(gctx))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -37,7 +38,7 @@ func NewMiddlewareGin(ctx context.Context, thr Throttler, gkey GinKey, gon GinOn
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			gon(gctx, err)
+			on(gctx, err)
 		}
 	}
 }
@@ -63,9 +64,9 @@ func StdHttpOnError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusTooManyRequests)
 }
 
-func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, stdkey StdHttpKey, stdon StdHttpOn) http.Handler {
+func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, key StdHttpKey, on StdHttpOn) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		ctx = WithKey(ctx, stdkey(req))
+		ctx = WithKey(ctx, key(req))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -76,7 +77,7 @@ func NewStdHttpHandler(ctx context.Context, h http.Handler, thr Throttler, stdke
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			stdon(w, err)
+			on(w, err)
 		}
 	})
 }
@@ -93,10 +94,10 @@ func EchoOnError(ectx echo.Context, err error) error {
 	return ectx.String(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareEcho(ctx context.Context, thr Throttler, ekey EchoKey, eon EchoOn) echo.MiddlewareFunc {
+func NewMiddlewareEcho(ctx context.Context, thr Throttler, key EchoKey, on EchoOn) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
-			ctx = WithKey(ctx, ekey(ectx))
+			ctx = WithKey(ctx, key(ectx))
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
 				headers := NewMeta(ctx, thr).Headers()
@@ -106,7 +107,7 @@ func NewMiddlewareEcho(ctx context.Context, thr Throttler, ekey EchoKey, eon Ech
 				return next(ectx)
 			})
 			if err := r.Result(); err != nil {
-				return eon(ectx, err)
+				return on(ectx, err)
 			}
 			return nil
 		}
@@ -125,9 +126,9 @@ func BeegoOnAbort(bctx *beegoctx.Context, err error) {
 	bctx.Abort(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareBeego(ctx context.Context, thr Throttler, bkey BeegoKey, bon BeegoOn) beego.FilterFunc {
+func NewFilterBeego(ctx context.Context, thr Throttler, key BeegoKey, on BeegoOn) beego.FilterFunc {
 	return func(bctx *beegoctx.Context) {
-		ctx = WithKey(ctx, bkey(bctx))
+		ctx = WithKey(ctx, key(bctx))
 		r := NewRunnerSync(ctx, thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
@@ -137,7 +138,7 @@ func NewMiddlewareBeego(ctx context.Context, thr Throttler, bkey BeegoKey, bon B
 			return nil
 		})
 		if err := r.Result(); err != nil {
-			bon(bctx, err)
+			on(bctx, err)
 		}
 	}
 }
@@ -154,17 +155,17 @@ func KitOnEcho(err error) (interface{}, error) {
 	return nil, err
 }
 
-func NewMiddlewareKit(ctx context.Context, thr Throttler, kkey KitKey, kon KitOn) endpoint.Middleware {
+func NewMiddlewareKit(ctx context.Context, thr Throttler, key KitKey, on KitOn) endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, req interface{}) (resp interface{}, err error) {
-			ctx = WithKey(ctx, kkey(req))
+			ctx = WithKey(ctx, key(req))
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
 				resp, err = next(ctx, req)
 				return err
 			})
 			if err := r.Result(); err != nil {
-				return kon(err)
+				return on(err)
 			}
 			return resp, nil
 		}
@@ -183,8 +184,8 @@ func MuxOnError(w http.ResponseWriter, err error) {
 	StdHttpOnError(w, err)
 }
 
-func NewMuxHandler(ctx context.Context, h http.Handler, thr Throttler, mkey MuxKey, mon MuxOn) http.Handler {
-	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(mkey), StdHttpOn(mon))
+func NewMuxHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
+	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(key), StdHttpOn(on))
 }
 
 type RouterKey StdHttpKey
@@ -199,6 +200,36 @@ func RouterOnError(w http.ResponseWriter, err error) {
 	StdHttpOnError(w, err)
 }
 
-func NewRouterHandler(ctx context.Context, h http.Handler, thr Throttler, mkey MuxKey, mon MuxOn) http.Handler {
-	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(mkey), StdHttpOn(mon))
+func NewRouterHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
+	return NewStdHttpHandler(ctx, h, thr, StdHttpKey(key), StdHttpOn(on))
+}
+
+type RevealKey func(*revel.Controller) interface{}
+
+func RevealKeyIp(c *revel.Controller) interface{} {
+	return c.ClientIP
+}
+
+type RevealOn func(error) revel.Result
+
+func RevealOnError(c *revel.Controller, err error) revel.Result {
+	return c.RenderError(err)
+}
+
+func NewRevelFilter(ctx context.Context, thr Throttler, key RevealKey, on RevealOn) revel.Filter {
+	return func(c *revel.Controller, chain []revel.Filter) {
+		ctx = WithKey(ctx, key(c))
+		r := NewRunnerSync(ctx, thr)
+		r.Run(func(ctx context.Context) error {
+			headers := NewMeta(ctx, thr).Headers()
+			for key, val := range headers {
+				c.Response.Out.Header().Add(key, val)
+			}
+			chain[0](c, chain[1:])
+			return nil
+		})
+		if err := r.Result(); err != nil {
+			c.Result = on(err)
+		}
+	}
 }
