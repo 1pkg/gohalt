@@ -33,6 +33,7 @@ require (
 	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/testify v1.6.1 // indirect
 	github.com/twinj/uuid v1.0.0 // indirect
+	github.com/valyala/fasthttp v1.15.0
 	github.com/valyala/fasttemplate v1.2.0 // indirect
 	github.com/xeonx/timeago v1.0.0-rc4 // indirect
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899 // indirect
