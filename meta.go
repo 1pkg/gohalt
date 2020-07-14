@@ -140,3 +140,6 @@ func (m *Meta) tvisitAny(ctx context.Context, thr *tany) {
 
 func (m *Meta) tvisitNot(ctx context.Context, thr *tnot) {
 }
+
+func (m *Meta) tvisitSuppress(ctx context.Context, thr *tsuppress) {
+}

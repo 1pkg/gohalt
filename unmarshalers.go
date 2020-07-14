@@ -109,3 +109,7 @@ func (umobj umobject) tvisitAny(ctx context.Context, thr *tany) {
 func (umobj umobject) tvisitNot(ctx context.Context, thr *tnot) {
 	thr.thr.accept(ctx, umobj)
 }
+
+func (umobj umobject) tvisitSuppress(ctx context.Context, thr *tsuppress) {
+	thr.thr.accept(ctx, umobj)
+}
