@@ -298,3 +298,28 @@ func NewHandlerFast(ctx context.Context, h fasthttp.RequestHandler, thr Throttle
 		}
 	}
 }
+
+type stdrt struct {
+	ctx context.Context
+	rt  http.RoundTripper
+	thr Throttler
+}
+
+func NewStdRoundTripper(ctx context.Context, rt http.RoundTripper, thr Throttler) stdrt {
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	return stdrt{ctx: ctx, rt: rt, thr: thr}
+}
+
+func (rt stdrt) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+	r := NewRunnerSync(rt.ctx, rt.thr)
+	r.Run(func(ctx context.Context) error {
+		resp, err = rt.rt.RoundTrip(req)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return nil, err
+	}
+	return resp, err
+}
