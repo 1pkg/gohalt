@@ -42,6 +42,7 @@ type tvisitor interface {
 	tvisitAll(context.Context, *tall)
 	tvisitAny(context.Context, *tany)
 	tvisitNot(context.Context, *tnot)
+	tvisitSuppress(context.Context, *tsuppress)
 }
 
 type techo struct {
@@ -709,4 +710,26 @@ func (thr tnot) Release(ctx context.Context) error {
 		return nil
 	}
 	return errors.New("throttler child error hasn't happened")
+}
+
+type tsuppress struct {
+	thr Throttler
+}
+
+func NewThrottlerSuppress(thr Throttler) tsuppress {
+	return tsuppress{thr: thr}
+}
+
+func (thr tsuppress) accept(ctx context.Context, v tvisitor) {
+	v.tvisitSuppress(ctx, &thr)
+}
+
+func (thr tsuppress) Acquire(ctx context.Context) error {
+	_ = thr.thr.Acquire(ctx)
+	return nil
+}
+
+func (thr tsuppress) Release(ctx context.Context) error {
+	_ = thr.thr.Release(ctx)
+	return nil
 }

@@ -130,8 +130,13 @@ func (gen *generator) tvisitAny(ctx context.Context, thr *tany) {
 }
 
 func (gen *generator) tvisitNot(ctx context.Context, thr *tnot) {
-	gen = NewGenerator(thr)
+	gen = NewGenerator(thr.thr)
 	gen.thr = NewThrottlerNot(gen.Generate(ctx, nil))
+}
+
+func (gen *generator) tvisitSuppress(ctx context.Context, thr *tsuppress) {
+	gen = NewGenerator(thr.thr)
+	gen.thr = NewThrottlerSuppress(gen.Generate(ctx, nil))
 }
 
 type genring struct {

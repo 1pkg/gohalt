@@ -111,3 +111,7 @@ func (mobj *mobject) tvisitAny(ctx context.Context, thr *tany) {
 func (mobj *mobject) tvisitNot(ctx context.Context, thr *tnot) {
 	thr.thr.accept(ctx, mobj)
 }
+
+func (mobj *mobject) tvisitSuppress(ctx context.Context, thr *tsuppress) {
+	thr.thr.accept(ctx, mobj)
+}
