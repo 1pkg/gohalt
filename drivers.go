@@ -315,6 +315,10 @@ func NewStdRoundTripper(ctx context.Context, rt http.RoundTripper, thr Throttler
 func (rt stdrt) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	r := NewRunnerSync(rt.ctx, rt.thr)
 	r.Run(func(ctx context.Context) error {
+		headers := NewMeta(rt.ctx, rt.thr).Headers()
+		for key, val := range headers {
+			req.Header.Add(key, val)
+		}
 		resp, err = rt.rt.RoundTrip(req)
 		return nil
 	})
@@ -322,4 +326,37 @@ func (rt stdrt) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 		return nil, err
 	}
 	return resp, err
+}
+
+type FastClient interface {
+	Do(req *fasthttp.Request, resp *fasthttp.Response) error
+}
+
+type fastcli struct {
+	ctx context.Context
+	cli FastClient
+	thr Throttler
+}
+
+func NewFastClient(ctx context.Context, cli FastClient, thr Throttler) fastcli {
+	if cli == nil {
+		cli = &fasthttp.Client{}
+	}
+	return fastcli{ctx: ctx, cli: cli, thr: thr}
+}
+
+func (cli fastcli) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) {
+	r := NewRunnerSync(cli.ctx, cli.thr)
+	r.Run(func(ctx context.Context) error {
+		headers := NewMeta(cli.ctx, cli.thr).Headers()
+		for key, val := range headers {
+			req.Header.Add(key, val)
+		}
+		err = cli.cli.Do(req, resp)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
 }
