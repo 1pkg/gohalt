@@ -14,6 +14,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/revel/revel"
 	"github.com/valyala/fasthttp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type GinKey func(*gin.Context) interface{}
@@ -362,7 +364,7 @@ type rpcccd struct {
 	thr Throttler
 }
 
-func NewRrpClientCodec(ctx context.Context, ccd rpc.ClientCodec, thr Throttler) rpcccd {
+func NewRpcClientCodec(ctx context.Context, ccd rpc.ClientCodec, thr Throttler) rpcccd {
 	return rpcccd{ctx: ctx, ccd: ccd, thr: thr}
 }
 
@@ -404,7 +406,7 @@ type rpscd struct {
 	thr Throttler
 }
 
-func NewRrpServerCodec(ctx context.Context, scd rpc.ServerCodec, thr Throttler) rpscd {
+func NewRpcServerCodec(ctx context.Context, scd rpc.ServerCodec, thr Throttler) rpscd {
 	return rpscd{ctx: ctx, scd: scd, thr: thr}
 }
 
@@ -438,4 +440,106 @@ func (scd rpscd) WriteResponse(resp *rpc.Response, body interface{}) (err error)
 
 func (scd rpscd) Close() error {
 	return scd.scd.Close()
+}
+
+type grpccst struct {
+	cst grpc.ClientStream
+	thr Throttler
+}
+
+func NewGrpClientStream(cst grpc.ClientStream, thr Throttler) grpccst {
+	return grpccst{cst: cst, thr: thr}
+}
+
+func (cst grpccst) Header() (metadata.MD, error) {
+	return cst.cst.Header()
+}
+
+func (cst grpccst) Trailer() metadata.MD {
+	return cst.cst.Trailer()
+}
+
+func (cst grpccst) CloseSend() error {
+	return cst.cst.CloseSend()
+}
+
+func (cst grpccst) Context() context.Context {
+	return cst.cst.Context()
+}
+
+func (cst grpccst) SendMsg(msg interface{}) (err error) {
+	r := NewRunnerSync(cst.cst.Context(), cst.thr)
+	r.Run(func(ctx context.Context) error {
+		err = cst.cst.SendMsg(msg)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (cst grpccst) RecvMsg(msg interface{}) (err error) {
+	r := NewRunnerSync(cst.cst.Context(), cst.thr)
+	r.Run(func(ctx context.Context) error {
+		err = cst.cst.RecvMsg(msg)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+type grpcsst struct {
+	sst grpc.ServerStream
+	thr Throttler
+}
+
+func NewGrpServerStream(sst grpc.ServerStream, thr Throttler) grpcsst {
+	return grpcsst{sst: sst, thr: thr}
+}
+
+func (sst grpcsst) SetHeader(md metadata.MD) error {
+	headers := NewMeta(sst.sst.Context(), sst.thr).Headers()
+	for key, val := range headers {
+		md.Append(key, val)
+	}
+	return sst.sst.SetHeader(md)
+}
+
+func (sst grpcsst) SendHeader(md metadata.MD) error {
+	return sst.sst.SendHeader(md)
+}
+
+func (sst grpcsst) SetTrailer(md metadata.MD) {
+	sst.sst.SetTrailer(md)
+}
+
+func (sst grpcsst) Context() context.Context {
+	return sst.sst.Context()
+}
+
+func (sst grpcsst) SendMsg(msg interface{}) (err error) {
+	r := NewRunnerSync(sst.sst.Context(), sst.thr)
+	r.Run(func(ctx context.Context) error {
+		err = sst.sst.SendMsg(msg)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (sst grpcsst) RecvMsg(msg interface{}) (err error) {
+	r := NewRunnerSync(sst.sst.Context(), sst.thr)
+	r.Run(func(ctx context.Context) error {
+		err = sst.sst.RecvMsg(msg)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
 }
