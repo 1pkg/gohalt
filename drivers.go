@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"net/http"
+	"net/rpc"
 	"strings"
 
 	"github.com/astaxie/beego"
@@ -306,9 +307,6 @@ type stdrt struct {
 }
 
 func NewStdRoundTripper(ctx context.Context, rt http.RoundTripper, thr Throttler) stdrt {
-	if rt == nil {
-		rt = http.DefaultTransport
-	}
 	return stdrt{ctx: ctx, rt: rt, thr: thr}
 }
 
@@ -339,9 +337,6 @@ type fastcli struct {
 }
 
 func NewFastClient(ctx context.Context, cli FastClient, thr Throttler) fastcli {
-	if cli == nil {
-		cli = &fasthttp.Client{}
-	}
 	return fastcli{ctx: ctx, cli: cli, thr: thr}
 }
 
@@ -359,4 +354,88 @@ func (cli fastcli) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error
 		return err
 	}
 	return err
+}
+
+type rpcccd struct {
+	ctx context.Context
+	ccd rpc.ClientCodec
+	thr Throttler
+}
+
+func NewRrpClientCodec(ctx context.Context, ccd rpc.ClientCodec, thr Throttler) rpcccd {
+	return rpcccd{ctx: ctx, ccd: ccd, thr: thr}
+}
+
+func (ccd rpcccd) WriteRequest(req *rpc.Request, body interface{}) (err error) {
+	r := NewRunnerSync(ccd.ctx, ccd.thr)
+	r.Run(func(ctx context.Context) error {
+		err = ccd.ccd.WriteRequest(req, body)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (ccd rpcccd) ReadResponseHeader(resp *rpc.Response) (err error) {
+	r := NewRunnerSync(ccd.ctx, ccd.thr)
+	r.Run(func(ctx context.Context) error {
+		err = ccd.ccd.ReadResponseHeader(resp)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (ccd rpcccd) ReadResponseBody(body interface{}) error {
+	return ccd.ccd.ReadResponseBody(body)
+}
+
+func (ccd rpcccd) Close() error {
+	return ccd.ccd.Close()
+}
+
+type rpscd struct {
+	ctx context.Context
+	scd rpc.ServerCodec
+	thr Throttler
+}
+
+func NewRrpServerCodec(ctx context.Context, scd rpc.ServerCodec, thr Throttler) rpscd {
+	return rpscd{ctx: ctx, scd: scd, thr: thr}
+}
+
+func (scd rpscd) ReadRequestHeader(req *rpc.Request) (err error) {
+	r := NewRunnerSync(scd.ctx, scd.thr)
+	r.Run(func(ctx context.Context) error {
+		err = scd.scd.ReadRequestHeader(req)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (scd rpscd) ReadRequestBody(body interface{}) error {
+	return scd.scd.ReadRequestBody(body)
+}
+
+func (scd rpscd) WriteResponse(resp *rpc.Response, body interface{}) (err error) {
+	r := NewRunnerSync(scd.ctx, scd.thr)
+	r.Run(func(ctx context.Context) error {
+		err = scd.scd.WriteResponse(resp, body)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func (scd rpscd) Close() error {
+	return scd.scd.Close()
 }
