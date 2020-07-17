@@ -24,6 +24,8 @@ require (
 	github.com/klauspost/compress v1.10.10 // indirect
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/mattn/go-colorable v0.1.7 // indirect
+	github.com/micro/go-micro v1.18.0 // indirect
+	github.com/micro/go-micro/v2 v2.9.1
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/myesui/uuid v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
