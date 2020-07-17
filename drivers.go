@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/kit/endpoint"
 	"github.com/kataras/iris/v12"
 	"github.com/labstack/echo/v4"
+	"github.com/micro/go-micro/v2/client"
+	"github.com/micro/go-micro/v2/server"
 	"github.com/revel/revel"
 	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
@@ -542,4 +544,43 @@ func (sst grpcsst) RecvMsg(msg interface{}) (err error) {
 		return err
 	}
 	return err
+}
+
+type microcli struct {
+	client.Client
+	thr Throttler
+}
+
+func NewMicroClientWrapper(thr Throttler) client.Wrapper {
+	return func(cli client.Client) client.Client {
+		return &microcli{Client: cli, thr: thr}
+	}
+}
+
+func (cli *microcli) Call(ctx context.Context, req client.Request, resp interface{}, opts ...client.CallOption) (err error) {
+	r := NewRunnerSync(ctx, cli.thr)
+	r.Run(func(ctx context.Context) error {
+		err = cli.Client.Call(ctx, req, resp, opts...)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return err
+	}
+	return err
+}
+
+func NewMicroHandlerWrapper(thr Throttler) server.HandlerWrapper {
+	return func(h server.HandlerFunc) server.HandlerFunc {
+		return func(ctx context.Context, req server.Request, resp interface{}) (err error) {
+			r := NewRunnerSync(ctx, thr)
+			r.Run(func(ctx context.Context) error {
+				err = h(ctx, req, resp)
+				return nil
+			})
+			if err := r.Result(); err != nil {
+				return err
+			}
+			return err
+		}
+	}
 }
