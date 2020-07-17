@@ -16,7 +16,6 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-playground/validator/v10 v10.3.0 // indirect
-	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/imkira/go-interpol v1.1.0 // indirect
 	github.com/inconshreveable/log15 v0.0.0-20200109203555-b30bc20e4fd1 // indirect
 	github.com/k0kubun/colorstring v0.0.0-20150214042306-9440f1994b88 // indirect
@@ -24,11 +23,9 @@ require (
 	github.com/klauspost/compress v1.10.10 // indirect
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/mattn/go-colorable v0.1.7 // indirect
-	github.com/micro/go-micro v1.18.0 // indirect
 	github.com/micro/go-micro/v2 v2.9.1
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/myesui/uuid v1.0.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/common v0.10.0
 	github.com/revel/config v1.0.0 // indirect
@@ -37,7 +34,6 @@ require (
 	github.com/revel/revel v1.0.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/segmentio/kafka-go v0.3.7
-	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shirou/gopsutil v2.20.6+incompatible
 	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/testify v1.6.1 // indirect
