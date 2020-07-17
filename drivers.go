@@ -21,6 +21,19 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+func ip(req *http.Request) interface{} {
+	first := func(ip string) string {
+		return strings.TrimSpace(strings.Split(ip, ",")[0])
+	}
+	if ip := strings.TrimSpace(req.Header.Get("X-Real-Ip")); ip != "" {
+		return first(ip)
+	}
+	if ip := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); ip != "" {
+		return first(ip)
+	}
+	return first(req.RemoteAddr)
+}
+
 type GinWith func(*gin.Context) context.Context
 
 func GinWithIP(gctx *gin.Context) context.Context {
@@ -53,18 +66,6 @@ func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc {
 type StdWith func(*http.Request) context.Context
 
 func StdWithIP(req *http.Request) context.Context {
-	ip := func(req *http.Request) interface{} {
-		first := func(ip string) string {
-			return strings.TrimSpace(strings.Split(ip, ",")[0])
-		}
-		if ip := strings.TrimSpace(req.Header.Get("X-Real-Ip")); ip != "" {
-			return first(ip)
-		}
-		if ip := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); ip != "" {
-			return first(ip)
-		}
-		return first(req.RemoteAddr)
-	}
 	return WithKey(req.Context(), ip(req))
 }
 
