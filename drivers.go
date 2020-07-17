@@ -2,6 +2,7 @@ package gohalt
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/rpc"
 	"strings"
@@ -20,10 +21,10 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-type GinKey func(*gin.Context) interface{}
+type GinWith func(*gin.Context) context.Context
 
-func GinKeyIP(gctx *gin.Context) interface{} {
-	return gctx.ClientIP()
+func GinWithIP(gctx *gin.Context) context.Context {
+	return WithKey(gctx.Request.Context(), gctx.ClientIP())
 }
 
 type GinOn func(*gin.Context, error)
@@ -32,10 +33,9 @@ func GinOnAbort(gctx *gin.Context, err error) {
 	_ = gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
-func NewHandlerGin(ctx context.Context, thr Throttler, key GinKey, on GinOn) gin.HandlerFunc {
+func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
-		ctx = WithKey(ctx, key(gctx))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(gctx), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
@@ -50,31 +50,33 @@ func NewHandlerGin(ctx context.Context, thr Throttler, key GinKey, on GinOn) gin
 	}
 }
 
-type StdKey func(*http.Request) interface{}
+type StdWith func(*http.Request) context.Context
 
-func StdKeyIP(req *http.Request) interface{} {
-	first := func(ip string) string {
-		return strings.TrimSpace(strings.Split(ip, ",")[0])
+func StdWithIP(req *http.Request) context.Context {
+	ip := func(req *http.Request) interface{} {
+		first := func(ip string) string {
+			return strings.TrimSpace(strings.Split(ip, ",")[0])
+		}
+		if ip := strings.TrimSpace(req.Header.Get("X-Real-Ip")); ip != "" {
+			return first(ip)
+		}
+		if ip := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); ip != "" {
+			return first(ip)
+		}
+		return first(req.RemoteAddr)
 	}
-	if ip := strings.TrimSpace(req.Header.Get("X-Real-Ip")); ip != "" {
-		return first(ip)
-	}
-	if ip := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); ip != "" {
-		return first(ip)
-	}
-	return first(req.RemoteAddr)
+	return WithKey(req.Context(), ip(req))
 }
 
 type StdOn func(http.ResponseWriter, error)
 
-func StdOnError(w http.ResponseWriter, err error) {
+func StdOnAbort(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusTooManyRequests)
 }
 
-func NewStdHandler(ctx context.Context, h http.Handler, thr Throttler, key StdKey, on StdOn) http.Handler {
+func NewMiddlewareStd(h http.Handler, thr Throttler, with StdWith, on StdOn) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		ctx = WithKey(ctx, key(req))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(req), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
@@ -89,42 +91,42 @@ func NewStdHandler(ctx context.Context, h http.Handler, thr Throttler, key StdKe
 	})
 }
 
-type EchoKey func(echo.Context) interface{}
+type EchoWith func(echo.Context) context.Context
 
-func EchoKeyIP(ectx echo.Context) interface{} {
-	return ectx.RealIP()
+func EchoWithIP(ectx echo.Context) context.Context {
+	return WithKey(ectx.Request().Context(), ectx.RealIP())
 }
 
 type EchoOn func(echo.Context, error) error
 
-func EchoOnError(ectx echo.Context, err error) error {
+func EchoOnAbort(ectx echo.Context, err error) error {
 	return ectx.String(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareEcho(ctx context.Context, thr Throttler, key EchoKey, on EchoOn) echo.MiddlewareFunc {
+func NewMiddlewareEcho(thr Throttler, with EchoWith, on EchoOn) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(ectx echo.Context) error {
-			ctx = WithKey(ctx, key(ectx))
-			r := NewRunnerSync(ctx, thr)
+		return func(ectx echo.Context) (err error) {
+			r := NewRunnerSync(with(ectx), thr)
 			r.Run(func(ctx context.Context) error {
 				headers := NewMeta(ctx, thr).Headers()
 				for key, val := range headers {
 					ectx.Response().Header().Set(key, val)
 				}
-				return next(ectx)
+				err = next(ectx)
+				return nil
 			})
 			if err := r.Result(); err != nil {
 				return on(ectx, err)
 			}
-			return nil
+			return err
 		}
 	}
 }
 
-type BeegoKey func(*beegoctx.Context) interface{}
+type BeegoWith func(*beegoctx.Context) context.Context
 
-func BeegoKeyIP(bctx *beegoctx.Context) interface{} {
-	return bctx.Input.IP()
+func BeegoWithIP(bctx *beegoctx.Context) context.Context {
+	return WithKey(bctx.Request.Context(), bctx.Input.IP())
 }
 
 type BeegoOn func(*beegoctx.Context, error)
@@ -133,10 +135,9 @@ func BeegoOnAbort(bctx *beegoctx.Context, err error) {
 	bctx.Abort(http.StatusTooManyRequests, err.Error())
 }
 
-func NewFilterBeego(ctx context.Context, thr Throttler, key BeegoKey, on BeegoOn) beego.FilterFunc {
+func NewMiddlewareBeego(thr Throttler, with BeegoWith, on BeegoOn) beego.FilterFunc {
 	return func(bctx *beegoctx.Context) {
-		ctx = WithKey(ctx, key(bctx))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(bctx), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
@@ -150,26 +151,25 @@ func NewFilterBeego(ctx context.Context, thr Throttler, key BeegoKey, on BeegoOn
 	}
 }
 
-type KitKey func(interface{}) interface{}
+type KitWith func(context.Context, interface{}) context.Context
 
-func KitKeyReq(req interface{}) interface{} {
-	return req
+func KitWithNil(ctx context.Context, req interface{}) context.Context {
+	return ctx
 }
 
 type KitOn func(error) (interface{}, error)
 
-func KitOnError(err error) (interface{}, error) {
-	return nil, err
+func KitOnAbort(err error) (interface{}, error) {
+	return nil, fmt.Errorf("%d: %w", http.StatusTooManyRequests, err)
 }
 
-func NewMiddlewareKit(ctx context.Context, thr Throttler, key KitKey, on KitOn) endpoint.Middleware {
+func NewMiddlewareKit(thr Throttler, with KitWith, on KitOn) endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, req interface{}) (resp interface{}, err error) {
-			ctx = WithKey(ctx, key(req))
-			r := NewRunnerSync(ctx, thr)
+			r := NewRunnerSync(with(ctx, req), thr)
 			r.Run(func(ctx context.Context) error {
 				resp, err = next(ctx, req)
-				return err
+				return nil
 			})
 			if err := r.Result(); err != nil {
 				return on(err)
@@ -179,56 +179,55 @@ func NewMiddlewareKit(ctx context.Context, thr Throttler, key KitKey, on KitOn) 
 	}
 }
 
-type MuxKey StdKey
+type MuxWith StdWith
 
-func MuxKeyIP(req *http.Request) interface{} {
-	return StdKeyIP(req)
+func MuxWithIP(req *http.Request) context.Context {
+	return StdWithIP(req)
 }
 
 type MuxOn StdOn
 
-func MuxOnError(w http.ResponseWriter, err error) {
-	StdOnError(w, err)
+func MuxOnAbort(w http.ResponseWriter, err error) {
+	StdOnAbort(w, err)
 }
 
-func NewMuxHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
-	return NewStdHandler(ctx, h, thr, StdKey(key), StdOn(on))
+func NewMiddlewareMux(h http.Handler, thr Throttler, with MuxWith, on MuxOn) http.Handler {
+	return NewMiddlewareStd(h, thr, StdWith(with), StdOn(on))
 }
 
-type RouterKey StdKey
+type RouterWith StdWith
 
-func RouterKeyIP(req *http.Request) interface{} {
-	return StdKeyIP(req)
+func RouterWithIP(req *http.Request) context.Context {
+	return StdWithIP(req)
 }
 
 type RouterOn StdOn
 
-func RouterOnError(w http.ResponseWriter, err error) {
-	StdOnError(w, err)
+func RouterOnAbort(w http.ResponseWriter, err error) {
+	StdOnAbort(w, err)
 }
 
-func NewRouterHandler(ctx context.Context, h http.Handler, thr Throttler, key MuxKey, on MuxOn) http.Handler {
-	return NewStdHandler(ctx, h, thr, StdKey(key), StdOn(on))
+func NewMiddlewareRouter(h http.Handler, thr Throttler, with MuxWith, on MuxOn) http.Handler {
+	return NewMiddlewareStd(h, thr, StdWith(with), StdOn(on))
 }
 
-type RevealKey func(*revel.Controller) interface{}
+type RevealWith func(*revel.Controller) context.Context
 
-func RevealKeyIp(rc *revel.Controller) interface{} {
-	return rc.ClientIP
+func RevealWithIp(rc *revel.Controller) context.Context {
+	return WithKey(rc.Request.Context(), rc.ClientIP)
 }
 
 type RevealOn func(error) revel.Result
 
-func RevealOnError(rc *revel.Controller, err error) revel.Result {
+func RevealOnAbort(rc *revel.Controller, err error) revel.Result {
 	result := rc.RenderError(err)
 	rc.Response.Status = http.StatusTooManyRequests
 	return result
 }
 
-func NewRevelFilter(ctx context.Context, thr Throttler, key RevealKey, on RevealOn) revel.Filter {
+func NewMiddlewareRevel(thr Throttler, with RevealWith, on RevealOn) revel.Filter {
 	return func(rc *revel.Controller, chain []revel.Filter) {
-		ctx = WithKey(ctx, key(rc))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(rc), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
@@ -243,23 +242,22 @@ func NewRevelFilter(ctx context.Context, thr Throttler, key RevealKey, on Reveal
 	}
 }
 
-type IrisKey func(iris.Context) interface{}
+type IrisWith func(iris.Context) context.Context
 
-func IrisKeyIP(ictx iris.Context) interface{} {
-	return ictx.RemoteAddr()
+func IrisWithIP(ictx iris.Context) context.Context {
+	return WithKey(ictx.Request().Context(), ictx.RemoteAddr())
 }
 
 type IrisOn func(iris.Context, error)
 
-func IrisOnError(ictx iris.Context, err error) {
+func IrisOnAbort(ictx iris.Context, err error) {
 	ictx.StatusCode(http.StatusTooManyRequests)
 	_, _ = ictx.WriteString(err.Error())
 }
 
-func NewHandlerIris(ctx context.Context, thr Throttler, key IrisKey, on IrisOn) iris.Handler {
+func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler {
 	return func(ictx iris.Context) {
-		ctx = WithKey(ctx, key(ictx))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(ictx), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
@@ -274,22 +272,21 @@ func NewHandlerIris(ctx context.Context, thr Throttler, key IrisKey, on IrisOn) 
 	}
 }
 
-type FastKey func(*fasthttp.RequestCtx) interface{}
+type FastWith func(*fasthttp.RequestCtx) context.Context
 
-func FastKeyIP(fctx *fasthttp.RequestCtx) interface{} {
-	return fctx.RemoteIP()
+func FastWithIP(fctx *fasthttp.RequestCtx) context.Context {
+	return WithKey(context.Background(), fctx.RemoteIP())
 }
 
 type FastOn func(*fasthttp.RequestCtx, error)
 
-func FastOnError(fctx *fasthttp.RequestCtx, err error) {
+func FastOnAbort(fctx *fasthttp.RequestCtx, err error) {
 	fctx.Error(err.Error(), fasthttp.StatusTooManyRequests)
 }
 
-func NewHandlerFast(ctx context.Context, h fasthttp.RequestHandler, thr Throttler, key FastKey, on FastOn) fasthttp.RequestHandler {
+func NewMiddlewareFast(h fasthttp.RequestHandler, thr Throttler, with FastWith, on FastOn) fasthttp.RequestHandler {
 	return func(fctx *fasthttp.RequestCtx) {
-		ctx = WithKey(ctx, key(fctx))
-		r := NewRunnerSync(ctx, thr)
+		r := NewRunnerSync(with(fctx), thr)
 		r.Run(func(ctx context.Context) error {
 			headers := NewMeta(ctx, thr).Headers()
 			for key, val := range headers {
