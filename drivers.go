@@ -574,6 +574,11 @@ func NewMicroHandlerWrapper(thr Throttler) server.HandlerWrapper {
 		return func(ctx context.Context, req server.Request, resp interface{}) (err error) {
 			r := NewRunnerSync(ctx, thr)
 			r.Run(func(ctx context.Context) error {
+				reqhead := req.Header()
+				headers := NewMeta(ctx, thr).Headers()
+				for key, val := range headers {
+					reqhead[key] = val
+				}
 				err = h(ctx, req, resp)
 				return nil
 			})
