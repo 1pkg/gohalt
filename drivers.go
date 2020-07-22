@@ -37,7 +37,8 @@ func ip(req *http.Request) interface{} {
 type GinWith func(*gin.Context) context.Context
 
 func GinWithIP(gctx *gin.Context) context.Context {
-	return WithKey(gctx.Request.Context(), gctx.ClientIP())
+	req := gctx.Request
+	return WithKey(req.Context(), ip(req))
 }
 
 type GinOn func(*gin.Context, error)
@@ -95,7 +96,8 @@ func NewMiddlewareStd(h http.Handler, thr Throttler, with StdWith, on StdOn) htt
 type EchoWith func(echo.Context) context.Context
 
 func EchoWithIP(ectx echo.Context) context.Context {
-	return WithKey(ectx.Request().Context(), ectx.RealIP())
+	req := ectx.Request()
+	return WithKey(req.Context(), ip(req))
 }
 
 type EchoOn func(echo.Context, error) error
@@ -127,7 +129,8 @@ func NewMiddlewareEcho(thr Throttler, with EchoWith, on EchoOn) echo.MiddlewareF
 type BeegoWith func(*beegoctx.Context) context.Context
 
 func BeegoWithIP(bctx *beegoctx.Context) context.Context {
-	return WithKey(bctx.Request.Context(), bctx.Input.IP())
+	req := bctx.Request
+	return WithKey(req.Context(), ip(req))
 }
 
 type BeegoOn func(*beegoctx.Context, error)
@@ -215,7 +218,16 @@ func NewMiddlewareRouter(h http.Handler, thr Throttler, with MuxWith, on MuxOn) 
 type RevealWith func(*revel.Controller) context.Context
 
 func RevealWithIp(rc *revel.Controller) context.Context {
-	return WithKey(rc.Request.Context(), rc.ClientIP)
+	req := rc.Request
+	keys := req.Header.Server.GetKeys()
+	stdreq := &http.Request{
+		Header:     make(http.Header),
+		RemoteAddr: rc.ClientIP,
+	}
+	for _, key := range keys {
+		stdreq.Header.Add(key, req.Header.Get(key))
+	}
+	return WithKey(req.Context(), ip(stdreq))
 }
 
 type RevealOn func(error) revel.Result
@@ -246,7 +258,8 @@ func NewMiddlewareRevel(thr Throttler, with RevealWith, on RevealOn) revel.Filte
 type IrisWith func(iris.Context) context.Context
 
 func IrisWithIP(ictx iris.Context) context.Context {
-	return WithKey(ictx.Request().Context(), ictx.RemoteAddr())
+	req := ictx.Request()
+	return WithKey(req.Context(), ip(req))
 }
 
 type IrisOn func(iris.Context, error)
@@ -276,7 +289,14 @@ func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler {
 type FastWith func(*fasthttp.RequestCtx) context.Context
 
 func FastWithIP(fctx *fasthttp.RequestCtx) context.Context {
-	return WithKey(context.Background(), fctx.RemoteIP())
+	stdreq := &http.Request{
+		Header:     make(http.Header),
+		RemoteAddr: fctx.RemoteIP().String(),
+	}
+	fctx.Request.Header.VisitAll(func(key []byte, val []byte) {
+		stdreq.Header.Add(string(key), string(val))
+	})
+	return WithKey(context.Background(), ip(stdreq))
 }
 
 type FastOn func(*fasthttp.RequestCtx, error)
