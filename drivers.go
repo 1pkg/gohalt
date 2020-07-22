@@ -157,7 +157,7 @@ func NewMiddlewareBeego(thr Throttler, with BeegoWith, on BeegoOn) beego.FilterF
 
 type KitWith func(context.Context, interface{}) context.Context
 
-func KitWithNil(ctx context.Context, req interface{}) context.Context {
+func KitWithEmpty(ctx context.Context, req interface{}) context.Context {
 	return ctx
 }
 
@@ -288,7 +288,7 @@ func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler {
 
 type FastWith func(*fasthttp.RequestCtx) context.Context
 
-func FastWithIP(fctx *fasthttp.RequestCtx) context.Context {
+func FastWithIPBackground(fctx *fasthttp.RequestCtx) context.Context {
 	stdreq := &http.Request{
 		Header:     make(http.Header),
 		RemoteAddr: fctx.RemoteIP().String(),
@@ -322,20 +322,33 @@ func NewMiddlewareFast(h fasthttp.RequestHandler, thr Throttler, with FastWith, 
 	}
 }
 
-type stdrt struct {
+type RoundTripperStdWith func(*http.Request) context.Context
+
+func RoundTripperStdWithEmpty(req *http.Request) context.Context {
+	return req.Context()
+}
+
+type RoundTripperStdOn func(error) error
+
+func RoundTripperStdOnAbort(err error) error {
+	return err
+}
+
+type rtstd struct {
 	http.RoundTripper
-	ctx context.Context
-	thr Throttler
+	thr  Throttler
+	with RoundTripperStdWith
+	on   RoundTripperStdOn
 }
 
-func NewStdRoundTripper(rt http.RoundTripper, ctx context.Context, thr Throttler) stdrt {
-	return stdrt{RoundTripper: rt, ctx: ctx, thr: thr}
+func NewRoundTripperStd(rt http.RoundTripper, thr Throttler, with RoundTripperStdWith, on RoundTripperStdOn) rtstd {
+	return rtstd{RoundTripper: rt, thr: thr, with: with, on: on}
 }
 
-func (rt stdrt) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	r := NewRunnerSync(rt.ctx, rt.thr)
+func (rt rtstd) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+	r := NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
-		headers := NewMeta(rt.ctx, rt.thr).Headers()
+		headers := NewMeta(ctx, rt.thr).Headers()
 		for key, val := range headers {
 			req.Header.Add(key, val)
 		}
@@ -343,149 +356,192 @@ func (rt stdrt) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return nil, err
+		return nil, rt.on(err)
 	}
 	return resp, err
 }
 
-type FastClient interface {
+type RoundTripperFast interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 }
 
-type fastcli struct {
-	FastClient
-	ctx context.Context
-	thr Throttler
+type RoundTripperFastWith func(*fasthttp.Request) context.Context
+
+func RoundTripperFastBackground(req *fasthttp.Request) context.Context {
+	return context.Background()
 }
 
-func NewFastClient(cli FastClient, ctx context.Context, thr Throttler) fastcli {
-	return fastcli{FastClient: cli, ctx: ctx, thr: thr}
+type RoundTripperFastOn func(error) error
+
+func RoundTripperFastOnAbort(err error) error {
+	return err
 }
 
-func (cli fastcli) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) {
-	r := NewRunnerSync(cli.ctx, cli.thr)
+type rtfast struct {
+	RoundTripperFast
+	thr  Throttler
+	with RoundTripperFastWith
+	on   RoundTripperFastOn
+}
+
+func NewRoundTripperFast(rt RoundTripperFast, thr Throttler, with RoundTripperFastWith, on RoundTripperFastOn) rtfast {
+	return rtfast{RoundTripperFast: rt, thr: thr, with: with, on: on}
+}
+
+func (rt rtfast) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) {
+	r := NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
-		headers := NewMeta(cli.ctx, cli.thr).Headers()
+		headers := NewMeta(ctx, rt.thr).Headers()
 		for key, val := range headers {
 			req.Header.Add(key, val)
 		}
-		err = cli.FastClient.Do(req, resp)
+		err = rt.RoundTripperFast.Do(req, resp)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return rt.on(err)
 	}
 	return err
 }
 
-type rpccc struct {
+type RpcCodecWith func(*rpc.Request, *rpc.Response, interface{}) context.Context
+
+func RpcCodecWithBackground(req *rpc.Request, resp *rpc.Response, msg interface{}) context.Context {
+	return context.Background()
+}
+
+type RpcCodecOn func(error) error
+
+func RpcCodecOnAbort(err error) error {
+	return err
+}
+
+type rpcc struct {
 	rpc.ClientCodec
-	ctx context.Context
-	thr Throttler
+	thr  Throttler
+	with RpcCodecWith
+	on   RpcCodecOn
 }
 
-func NewRpcClientCodec(cc rpc.ClientCodec, ctx context.Context, thr Throttler) rpccc {
-	return rpccc{ClientCodec: cc, ctx: ctx, thr: thr}
+func NewRpcClientCodec(cc rpc.ClientCodec, thr Throttler, with RpcCodecWith, on RpcCodecOn) rpcc {
+	return rpcc{ClientCodec: cc, thr: thr, with: with, on: on}
 }
 
-func (cc rpccc) WriteRequest(req *rpc.Request, body interface{}) (err error) {
-	r := NewRunnerSync(cc.ctx, cc.thr)
+func (cc rpcc) WriteRequest(req *rpc.Request, msg interface{}) (err error) {
+	r := NewRunnerSync(cc.with(req, nil, msg), cc.thr)
 	r.Run(func(ctx context.Context) error {
-		err = cc.ClientCodec.WriteRequest(req, body)
+		err = cc.ClientCodec.WriteRequest(req, msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return cc.on(err)
 	}
 	return err
 }
 
-func (cc rpccc) ReadResponseHeader(resp *rpc.Response) (err error) {
-	r := NewRunnerSync(cc.ctx, cc.thr)
+func (cc rpcc) ReadResponseHeader(resp *rpc.Response) (err error) {
+	r := NewRunnerSync(cc.with(nil, resp, nil), cc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cc.ClientCodec.ReadResponseHeader(resp)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return cc.on(err)
 	}
 	return err
 }
 
-type rpcsc struct {
+type rpcs struct {
 	rpc.ServerCodec
-	ctx context.Context
-	thr Throttler
+	thr  Throttler
+	with RpcCodecWith
+	on   RpcCodecOn
 }
 
-func NewRpcServerCodec(sc rpc.ServerCodec, ctx context.Context, thr Throttler) rpcsc {
-	return rpcsc{ServerCodec: sc, ctx: ctx, thr: thr}
+func NewRpcServerCodec(sc rpc.ServerCodec, thr Throttler, with RpcCodecWith, on RpcCodecOn) rpcs {
+	return rpcs{ServerCodec: sc, thr: thr, with: with, on: on}
 }
 
-func (sc rpcsc) ReadRequestHeader(req *rpc.Request) (err error) {
-	r := NewRunnerSync(sc.ctx, sc.thr)
+func (sc rpcs) ReadRequestHeader(req *rpc.Request) (err error) {
+	r := NewRunnerSync(sc.with(req, nil, nil), sc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = sc.ServerCodec.ReadRequestHeader(req)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return sc.on(err)
 	}
 	return err
 }
 
-func (sc rpcsc) WriteResponse(resp *rpc.Response, body interface{}) (err error) {
-	r := NewRunnerSync(sc.ctx, sc.thr)
+func (sc rpcs) WriteResponse(resp *rpc.Response, msg interface{}) (err error) {
+	r := NewRunnerSync(sc.with(nil, resp, msg), sc.thr)
 	r.Run(func(ctx context.Context) error {
-		err = sc.ServerCodec.WriteResponse(resp, body)
+		err = sc.ServerCodec.WriteResponse(resp, msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return sc.on(err)
 	}
+	return err
+}
+
+type GrpcStreamWith func(context.Context, interface{}) context.Context
+
+func GrpcStreamWithEmpty(ctx context.Context, msg interface{}) context.Context {
+	return ctx
+}
+
+type GrpcStreamOn func(error) error
+
+func GrpcStreamAbort(err error) error {
 	return err
 }
 
 type grpccs struct {
 	grpc.ClientStream
-	thr Throttler
+	thr  Throttler
+	with GrpcStreamWith
+	on   GrpcStreamOn
 }
 
-func NewGrpClientStream(cs grpc.ClientStream, thr Throttler) grpccs {
-	return grpccs{ClientStream: cs, thr: thr}
+func NewGrpClientStream(cs grpc.ClientStream, thr Throttler, with GrpcStreamWith, on GrpcStreamOn) grpccs {
+	return grpccs{ClientStream: cs, thr: thr, with: with, on: on}
 }
 
 func (cs grpccs) SendMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(cs.Context(), cs.thr)
+	r := NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cs.ClientStream.SendMsg(msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return cs.on(err)
 	}
 	return err
 }
 
 func (cs grpccs) RecvMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(cs.Context(), cs.thr)
+	r := NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cs.ClientStream.RecvMsg(msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return cs.on(err)
 	}
 	return err
 }
 
 type grpcss struct {
 	grpc.ServerStream
-	thr Throttler
+	thr  Throttler
+	with GrpcStreamWith
+	on   GrpcStreamOn
 }
 
-func NewGrpServerStream(ss grpc.ServerStream, thr Throttler) grpcss {
-	return grpcss{ServerStream: ss, thr: thr}
+func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GrpcStreamWith, on GrpcStreamOn) grpcss {
+	return grpcss{ServerStream: ss, thr: thr, with: with, on: on}
 }
 
 func (ss grpcss) SetHeader(md metadata.MD) error {
@@ -497,56 +553,76 @@ func (ss grpcss) SetHeader(md metadata.MD) error {
 }
 
 func (ss grpcss) SendMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(ss.Context(), ss.thr)
+	r := NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
 	r.Run(func(ctx context.Context) error {
 		err = ss.ServerStream.SendMsg(msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return ss.on(err)
 	}
 	return err
 }
 
 func (ss grpcss) RecvMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(ss.Context(), ss.thr)
+	r := NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
 	r.Run(func(ctx context.Context) error {
 		err = ss.ServerStream.RecvMsg(msg)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return ss.on(err)
 	}
+	return err
+}
+
+type MicroClientWith func(context.Context, client.Request) context.Context
+
+func MicroClientWithEmpty(ctx context.Context, req client.Request) context.Context {
+	return ctx
+}
+
+type MicroServerWith func(context.Context, server.Request) context.Context
+
+func MicroServerEmpty(ctx context.Context, req server.Request) context.Context {
+	return ctx
+}
+
+type MicroOn func(error) error
+
+func MicroOnAbort(err error) error {
 	return err
 }
 
 type microcli struct {
 	client.Client
-	thr Throttler
+	thr  Throttler
+	with MicroClientWith
+	on   MicroOn
 }
 
-func NewMicroClientWrapper(thr Throttler) client.Wrapper {
+func NewMicroClient(thr Throttler, with MicroClientWith, on MicroOn) client.Wrapper {
 	return func(cli client.Client) client.Client {
-		return microcli{Client: cli, thr: thr}
+		return microcli{Client: cli, thr: thr, with: with, on: on}
 	}
 }
 
 func (cli microcli) Call(ctx context.Context, req client.Request, resp interface{}, opts ...client.CallOption) (err error) {
-	r := NewRunnerSync(ctx, cli.thr)
+	r := NewRunnerSync(cli.with(ctx, req), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cli.Client.Call(ctx, req, resp, opts...)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return err
+		return cli.on(err)
 	}
 	return err
 }
 
-func NewMicroHandlerWrapper(thr Throttler) server.HandlerWrapper {
+func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.HandlerWrapper {
 	return func(h server.HandlerFunc) server.HandlerFunc {
 		return func(ctx context.Context, req server.Request, resp interface{}) (err error) {
-			r := NewRunnerSync(ctx, thr)
+			r := NewRunnerSync(with(ctx, req), thr)
 			r.Run(func(ctx context.Context) error {
 				reqhead := req.Header()
 				headers := NewMeta(ctx, thr).Headers()
@@ -557,7 +633,7 @@ func NewMicroHandlerWrapper(thr Throttler) server.HandlerWrapper {
 				return nil
 			})
 			if err := r.Result(); err != nil {
-				return err
+				return on(err)
 			}
 			return err
 		}
