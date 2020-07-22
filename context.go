@@ -87,3 +87,31 @@ func ctxMarshaler(ctx context.Context) Marshaler {
 	}
 	return DefaultMarshaler
 }
+
+type ctxthr struct {
+	context.Context
+	thr  Throttler
+	freq time.Duration
+}
+
+func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) {
+	return ctxthr{Context: ctx, thr: thr, freq: freq}
+}
+
+func (ctx ctxthr) Done() <-chan struct{} {
+	ch := make(chan struct{})
+	_ = loop(ctx.freq, func(ctx context.Context) error {
+		err := ctx.Err()
+		if err != nil {
+			close(ch)
+		}
+		return err
+	})(ctx)
+	return ch
+}
+
+func (ctx ctxthr) Err() (err error) {
+	r := NewRunnerSync(ctx, ctx.thr)
+	r.Run(nope)
+	return r.Result()
+}

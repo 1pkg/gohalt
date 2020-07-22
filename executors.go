@@ -7,11 +7,13 @@ import (
 
 type Runnable func(context.Context) error
 
+func nope(context.Context) error {
+	return nil
+}
+
 func loop(period time.Duration, run Runnable) Runnable {
 	if period == 0 {
-		return func(ctx context.Context) error {
-			return nil
-		}
+		return nope
 	}
 	return func(ctx context.Context) error {
 		go func() {
