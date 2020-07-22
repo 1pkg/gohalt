@@ -2,6 +2,7 @@ package gohalt
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
@@ -692,4 +693,82 @@ func (conn connwrite) Write(b []byte) (n int, err error) {
 		return 0, err
 	}
 	return n, err
+}
+
+type SqlClient interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+}
+
+type SqlClientWith func(context.Context, string, ...interface{}) context.Context
+
+func SqlClientQuery(ctx context.Context, query string, args ...interface{}) context.Context {
+	return WithKey(ctx, query)
+}
+
+type SqlClientOn func(error) error
+
+func SqlClientAbort(err error) error {
+	return err
+}
+
+type sqlcli struct {
+	SqlClient
+	thr  Throttler
+	with SqlClientWith
+	on   SqlClientOn
+}
+
+func NewSqlClient(cli SqlClient, thr Throttler, with SqlClientWith, on SqlClientOn) SqlClient {
+	return sqlcli{SqlClient: cli, thr: thr, with: with, on: on}
+}
+
+func (cli sqlcli) ExecContext(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
+	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r.Run(func(ctx context.Context) error {
+		result, err = cli.SqlClient.ExecContext(ctx, query, args...)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return nil, cli.on(err)
+	}
+	return result, err
+}
+
+func (cli sqlcli) PrepareContext(ctx context.Context, query string) (smt *sql.Stmt, err error) {
+	r := NewRunnerSync(cli.with(ctx, query), cli.thr)
+	r.Run(func(ctx context.Context) error {
+		smt, err = cli.SqlClient.PrepareContext(ctx, query)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return nil, cli.on(err)
+	}
+	return smt, err
+}
+
+func (cli sqlcli) QueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
+	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r.Run(func(ctx context.Context) error {
+		rows, err = cli.SqlClient.QueryContext(ctx, query, args...)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return nil, cli.on(err)
+	}
+	return rows, err
+}
+
+func (cli sqlcli) QueryRowContext(ctx context.Context, query string, args ...interface{}) (row *sql.Row) {
+	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r.Run(func(ctx context.Context) error {
+		row = cli.SqlClient.QueryRowContext(ctx, query, args...)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return nil
+	}
+	return row
 }
