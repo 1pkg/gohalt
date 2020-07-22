@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/rpc"
 	"strings"
@@ -638,4 +639,57 @@ func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.Han
 			return err
 		}
 	}
+}
+
+type netconn struct {
+	net.Conn
+	//nolint used in connread/connwrite
+	thr Throttler
+	//nolint used in connread/connwrite
+	ctx context.Context
+}
+
+type connread netconn
+type connwrite netconn
+
+type NetMode int
+
+const (
+	NetModeRead  NetMode = iota
+	NetModeWrite NetMode = iota
+)
+
+func NewNetConnection(conn net.Conn, thr Throttler, ctx context.Context, mode NetMode) net.Conn {
+	switch mode {
+	case NetModeRead:
+		return connread{Conn: conn, thr: thr, ctx: ctx}
+	case NetModeWrite:
+		return connwrite{Conn: conn, thr: thr, ctx: ctx}
+	default:
+		return nil
+	}
+}
+
+func (conn connread) Read(b []byte) (n int, err error) {
+	r := NewRunnerSync(conn.ctx, conn.thr)
+	r.Run(func(ctx context.Context) error {
+		n, err = conn.Conn.Read(b)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return 0, err
+	}
+	return n, err
+}
+
+func (conn connwrite) Write(b []byte) (n int, err error) {
+	r := NewRunnerSync(conn.ctx, conn.thr)
+	r.Run(func(ctx context.Context) error {
+		n, err = conn.Conn.Read(b)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return 0, err
+	}
+	return n, err
 }
