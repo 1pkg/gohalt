@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -647,53 +648,76 @@ func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.Han
 	}
 }
 
+type NetConnWith func() context.Context
+
+func NetConnWithBackground() context.Context {
+	return context.Background()
+}
+
+type NetConnOn func(error) error
+
+func NetConnAbort(err error) error {
+	return err
+}
+
 type netconn struct {
 	net.Conn
-	thr Throttler
-	ctx context.Context
+	thr  Throttler
+	with NetConnWith
+	on   NetConnOn
 }
 
 type connread = netconn
 type connwrite = netconn
 
-type NetMode int
+type NetConnMode int
 
 const (
-	NetModeRead  NetMode = iota
-	NetModeWrite NetMode = iota
+	NetConnModeRead  NetConnMode = iota
+	NetConnModeWrite NetConnMode = iota
 )
 
-func NewNetConnection(conn net.Conn, thr Throttler, ctx context.Context, mode NetMode) net.Conn {
+func NewNetConn(conn net.Conn, thr Throttler, with NetConnWith, on NetConnOn, mode NetConnMode) net.Conn {
 	switch mode {
-	case NetModeRead:
-		return connread{Conn: conn, thr: thr, ctx: ctx}
-	case NetModeWrite:
-		return connwrite{Conn: conn, thr: thr, ctx: ctx}
+	case NetConnModeRead:
+		return connread{
+			Conn: conn,
+			thr:  thr,
+			with: with,
+			on:   on,
+		}
+	case NetConnModeWrite:
+		return connwrite{
+			Conn: conn,
+			thr:  thr,
+			with: with,
+			on:   on,
+		}
 	default:
 		return nil
 	}
 }
 
 func (conn connread) Read(b []byte) (n int, err error) {
-	r := NewRunnerSync(conn.ctx, conn.thr)
+	r := NewRunnerSync(conn.with(), conn.thr)
 	r.Run(func(ctx context.Context) error {
 		n, err = conn.Conn.Read(b)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return 0, err
+		return 0, conn.on(err)
 	}
 	return n, err
 }
 
 func (conn connwrite) Write(b []byte) (n int, err error) {
-	r := NewRunnerSync(conn.ctx, conn.thr)
+	r := NewRunnerSync(conn.with(), conn.thr)
 	r.Run(func(ctx context.Context) error {
 		n, err = conn.Conn.Read(b)
 		return nil
 	})
 	if err := r.Result(); err != nil {
-		return 0, err
+		return 0, conn.on(err)
 	}
 	return n, err
 }
@@ -774,4 +798,72 @@ func (cli sqlcli) QueryRowContext(ctx context.Context, query string, args ...int
 		return nil
 	}
 	return row
+}
+
+type RWWith func() context.Context
+
+func RWWithBackground() context.Context {
+	return context.Background()
+}
+
+type RWOn func(error) error
+
+func RWAbort(err error) error {
+	return err
+}
+
+type reader struct {
+	io.Reader
+	thr  Throttler
+	with RWWith
+	on   RWOn
+}
+
+func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) reader {
+	return reader{
+		Reader: r,
+		thr:    thr,
+		with:   with,
+		on:     on,
+	}
+}
+
+func (r reader) Read(p []byte) (n int, err error) {
+	rs := NewRunnerSync(r.with(), r.thr)
+	rs.Run(func(context.Context) error {
+		n, err = r.Reader.Read(p)
+		return nil
+	})
+	if err := rs.Result(); err != nil {
+		return 0, r.on(err)
+	}
+	return n, err
+}
+
+type writer struct {
+	io.Writer
+	thr  Throttler
+	with RWWith
+	on   RWOn
+}
+
+func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) writer {
+	return writer{
+		Writer: w,
+		thr:    thr,
+		with:   with,
+		on:     on,
+	}
+}
+
+func (w writer) Write(p []byte) (n int, err error) {
+	r := NewRunnerSync(w.with(), w.thr)
+	r.Run(func(context.Context) error {
+		n, err = w.Writer.Write(p)
+		return nil
+	})
+	if err := r.Result(); err != nil {
+		return 0, w.on(err)
+	}
+	return n, err
 }
