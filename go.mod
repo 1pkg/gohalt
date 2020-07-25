@@ -36,7 +36,7 @@ require (
 	github.com/segmentio/kafka-go v0.3.7
 	github.com/shirou/gopsutil v2.20.6+incompatible
 	github.com/streadway/amqp v1.0.0
-	github.com/stretchr/testify v1.6.1 // indirect
+	github.com/stretchr/testify v1.6.1
 	github.com/twinj/uuid v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.15.0
 	github.com/valyala/fasttemplate v1.2.0 // indirect
