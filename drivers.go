@@ -649,14 +649,12 @@ func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.Han
 
 type netconn struct {
 	net.Conn
-	//nolint // used in connread/connwrite
 	thr Throttler
-	//nolint // used in connread/connwrite
 	ctx context.Context
 }
 
-type connread netconn
-type connwrite netconn
+type connread = netconn
+type connwrite = netconn
 
 type NetMode int
 
