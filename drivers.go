@@ -219,7 +219,7 @@ func NewMiddlewareRouter(h http.Handler, thr Throttler, with MuxWith, on MuxOn) 
 
 type RevealWith func(*revel.Controller) context.Context
 
-func RevealWithIp(rc *revel.Controller) context.Context {
+func RevealWithIP(rc *revel.Controller) context.Context {
 	req := rc.Request
 	keys := req.Header.Server.GetKeys()
 	stdreq := &http.Request{
@@ -406,26 +406,26 @@ func (rt rtfast) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) 
 	return err
 }
 
-type RpcCodecWith func(*rpc.Request, *rpc.Response, interface{}) context.Context
+type RPCCodecWith func(*rpc.Request, *rpc.Response, interface{}) context.Context
 
-func RpcCodecWithBackground(req *rpc.Request, resp *rpc.Response, msg interface{}) context.Context {
+func RPCCodecWithBackground(req *rpc.Request, resp *rpc.Response, msg interface{}) context.Context {
 	return context.Background()
 }
 
-type RpcCodecOn func(error) error
+type RPCCodecOn func(error) error
 
-func RpcCodecOnAbort(err error) error {
+func RPCCodecOnAbort(err error) error {
 	return err
 }
 
 type rpcc struct {
 	rpc.ClientCodec
 	thr  Throttler
-	with RpcCodecWith
-	on   RpcCodecOn
+	with RPCCodecWith
+	on   RPCCodecOn
 }
 
-func NewRpcClientCodec(cc rpc.ClientCodec, thr Throttler, with RpcCodecWith, on RpcCodecOn) rpcc {
+func NewRPCClientCodec(cc rpc.ClientCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpcc {
 	return rpcc{ClientCodec: cc, thr: thr, with: with, on: on}
 }
 
@@ -456,11 +456,11 @@ func (cc rpcc) ReadResponseHeader(resp *rpc.Response) (err error) {
 type rpcs struct {
 	rpc.ServerCodec
 	thr  Throttler
-	with RpcCodecWith
-	on   RpcCodecOn
+	with RPCCodecWith
+	on   RPCCodecOn
 }
 
-func NewRpcServerCodec(sc rpc.ServerCodec, thr Throttler, with RpcCodecWith, on RpcCodecOn) rpcs {
+func NewRPCServerCodec(sc rpc.ServerCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpcs {
 	return rpcs{ServerCodec: sc, thr: thr, with: with, on: on}
 }
 
@@ -488,26 +488,26 @@ func (sc rpcs) WriteResponse(resp *rpc.Response, msg interface{}) (err error) {
 	return err
 }
 
-type GrpcStreamWith func(context.Context, interface{}) context.Context
+type GRPCStreamWith func(context.Context, interface{}) context.Context
 
-func GrpcStreamWithEmpty(ctx context.Context, msg interface{}) context.Context {
+func GRPCStreamWithEmpty(ctx context.Context, msg interface{}) context.Context {
 	return ctx
 }
 
-type GrpcStreamOn func(error) error
+type GRPCStreamOn func(error) error
 
-func GrpcStreamAbort(err error) error {
+func GRPCStreamAbort(err error) error {
 	return err
 }
 
 type grpccs struct {
 	grpc.ClientStream
 	thr  Throttler
-	with GrpcStreamWith
-	on   GrpcStreamOn
+	with GRPCStreamWith
+	on   GRPCStreamOn
 }
 
-func NewGrpClientStream(cs grpc.ClientStream, thr Throttler, with GrpcStreamWith, on GrpcStreamOn) grpccs {
+func NewGRPCClientStream(cs grpc.ClientStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpccs {
 	return grpccs{ClientStream: cs, thr: thr, with: with, on: on}
 }
 
@@ -538,11 +538,11 @@ func (cs grpccs) RecvMsg(msg interface{}) (err error) {
 type grpcss struct {
 	grpc.ServerStream
 	thr  Throttler
-	with GrpcStreamWith
-	on   GrpcStreamOn
+	with GRPCStreamWith
+	on   GRPCStreamOn
 }
 
-func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GrpcStreamWith, on GrpcStreamOn) grpcss {
+func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpcss {
 	return grpcss{ServerStream: ss, thr: thr, with: with, on: on}
 }
 
@@ -609,7 +609,12 @@ func NewMicroClient(thr Throttler, with MicroClientWith, on MicroOn) client.Wrap
 	}
 }
 
-func (cli microcli) Call(ctx context.Context, req client.Request, resp interface{}, opts ...client.CallOption) (err error) {
+func (cli microcli) Call(
+	ctx context.Context,
+	req client.Request,
+	resp interface{},
+	opts ...client.CallOption,
+) (err error) {
 	r := NewRunnerSync(cli.with(ctx, req), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cli.Client.Call(ctx, req, resp, opts...)
@@ -644,9 +649,9 @@ func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.Han
 
 type netconn struct {
 	net.Conn
-	//nolint used in connread/connwrite
+	//nolint // used in connread/connwrite
 	thr Throttler
-	//nolint used in connread/connwrite
+	//nolint // used in connread/connwrite
 	ctx context.Context
 }
 
@@ -695,40 +700,40 @@ func (conn connwrite) Write(b []byte) (n int, err error) {
 	return n, err
 }
 
-type SqlClient interface {
+type SQLClient interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-type SqlClientWith func(context.Context, string, ...interface{}) context.Context
+type SQLClientWith func(context.Context, string, ...interface{}) context.Context
 
-func SqlClientQuery(ctx context.Context, query string, args ...interface{}) context.Context {
+func SQLClientQuery(ctx context.Context, query string, args ...interface{}) context.Context {
 	return WithKey(ctx, query)
 }
 
-type SqlClientOn func(error) error
+type SQLClientOn func(error) error
 
-func SqlClientAbort(err error) error {
+func SQLClientAbort(err error) error {
 	return err
 }
 
 type sqlcli struct {
-	SqlClient
+	SQLClient
 	thr  Throttler
-	with SqlClientWith
-	on   SqlClientOn
+	with SQLClientWith
+	on   SQLClientOn
 }
 
-func NewSqlClient(cli SqlClient, thr Throttler, with SqlClientWith, on SqlClientOn) SqlClient {
-	return sqlcli{SqlClient: cli, thr: thr, with: with, on: on}
+func NewSQLClient(cli SQLClient, thr Throttler, with SQLClientWith, on SQLClientOn) sqlcli {
+	return sqlcli{SQLClient: cli, thr: thr, with: with, on: on}
 }
 
 func (cli sqlcli) ExecContext(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
 	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
-		result, err = cli.SqlClient.ExecContext(ctx, query, args...)
+		result, err = cli.SQLClient.ExecContext(ctx, query, args...)
 		return nil
 	})
 	if err := r.Result(); err != nil {
@@ -740,7 +745,7 @@ func (cli sqlcli) ExecContext(ctx context.Context, query string, args ...interfa
 func (cli sqlcli) PrepareContext(ctx context.Context, query string) (smt *sql.Stmt, err error) {
 	r := NewRunnerSync(cli.with(ctx, query), cli.thr)
 	r.Run(func(ctx context.Context) error {
-		smt, err = cli.SqlClient.PrepareContext(ctx, query)
+		smt, err = cli.SQLClient.PrepareContext(ctx, query)
 		return nil
 	})
 	if err := r.Result(); err != nil {
@@ -752,7 +757,7 @@ func (cli sqlcli) PrepareContext(ctx context.Context, query string) (smt *sql.St
 func (cli sqlcli) QueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
 	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
-		rows, err = cli.SqlClient.QueryContext(ctx, query, args...)
+		rows, err = cli.SQLClient.QueryContext(ctx, query, args...)
 		return nil
 	})
 	if err := r.Result(); err != nil {
@@ -764,7 +769,7 @@ func (cli sqlcli) QueryContext(ctx context.Context, query string, args ...interf
 func (cli sqlcli) QueryRowContext(ctx context.Context, query string, args ...interface{}) (row *sql.Row) {
 	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
-		row = cli.SqlClient.QueryRowContext(ctx, query, args...)
+		row = cli.SQLClient.QueryRowContext(ctx, query, args...)
 		return nil
 	})
 	if err := r.Result(); err != nil {

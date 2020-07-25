@@ -90,7 +90,7 @@ func (s sbadger) close(context.Context) error {
 	return s.db.Close()
 }
 
-func (s sbadger) connect(ctx context.Context, path string) error {
+func (s sbadger) connect(_ context.Context, path string) error {
 	db, err := badger.Open(badger.DefaultOptions(path))
 	if err != nil {
 		return err

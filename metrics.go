@@ -46,7 +46,7 @@ func (mtc *mtcprometheus) Query(ctx context.Context) (bool, error) {
 	return mtc.value, nil
 }
 
-func (mtc mtcprometheus) connect(ctx context.Context, url string) (prometheus.API, error) {
+func (mtc mtcprometheus) connect(_ context.Context, url string) (prometheus.API, error) {
 	client, err := client.NewClient(
 		client.Config{
 			Address:      url,

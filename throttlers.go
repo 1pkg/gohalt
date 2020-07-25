@@ -329,7 +329,7 @@ func NewThrottlerTimed(ctx context.Context, limit uint64, interval time.Duration
 		window /= slide
 	}
 	_ = loop(window, func(ctx context.Context) error {
-		atomic.AddUint64(&thr.current, ^uint64(delta-1))
+		atomic.AddUint64(&thr.current, ^(delta - 1))
 		if current := atomic.LoadUint64(&thr.current); current >= ^uint64(0) {
 			atomic.StoreUint64(&thr.current, 0)
 		}
@@ -368,15 +368,15 @@ func (thr tmonitor) Acquire(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("throttler error has happened %w", err)
 	}
-	if stats.MemAlloc >= thr.limit.MemAlloc || stats.MemSystem >= thr.limit.MemSystem ||
-		stats.CpuPause >= thr.limit.CpuPause || stats.CpuUsage >= thr.limit.CpuUsage {
+	if stats.MEMAlloc >= thr.limit.MEMAlloc || stats.MEMSystem >= thr.limit.MEMSystem ||
+		stats.CPUPause >= thr.limit.CPUPause || stats.CPUUsage >= thr.limit.CPUUsage {
 		return fmt.Errorf(
 			`throttler has exceed stats limits
 alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
-			stats.MemAlloc/1024,
-			stats.MemSystem/1024,
-			time.Duration(stats.CpuPause),
-			stats.CpuUsage,
+			stats.MEMAlloc/1024,
+			stats.MEMSystem/1024,
+			time.Duration(stats.CPUPause),
+			stats.CPUUsage,
 		)
 	}
 	return nil
@@ -516,7 +516,7 @@ func (thr *tadaptive) accept(ctx context.Context, v tvisitor) {
 func (thr *tadaptive) Acquire(ctx context.Context) error {
 	err := thr.thr.Acquire(ctx)
 	if err != nil {
-		atomic.AddUint64(&thr.ttimed.limit, ^uint64(thr.step*thr.step))
+		atomic.AddUint64(&thr.ttimed.limit, ^(thr.step*thr.step - 1))
 	} else {
 		atomic.AddUint64(&thr.ttimed.limit, thr.step)
 	}
@@ -622,8 +622,8 @@ func NewThrottlerAll(thrs ...Throttler) tall {
 	return tall(thrs)
 }
 
-func (thr tall) accept(ctx context.Context, v tvisitor) {
-	v.tvisitAll(ctx, &thr)
+func (thrs tall) accept(ctx context.Context, v tvisitor) {
+	v.tvisitAll(ctx, &thrs)
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
@@ -650,8 +650,8 @@ func NewThrottlerAny(thrs ...Throttler) tany {
 	return tany(thrs)
 }
 
-func (thr tany) accept(ctx context.Context, v tvisitor) {
-	v.tvisitAny(ctx, &thr)
+func (thrs tany) accept(ctx context.Context, v tvisitor) {
+	v.tvisitAny(ctx, &thrs)
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {

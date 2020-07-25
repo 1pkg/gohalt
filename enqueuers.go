@@ -15,7 +15,7 @@ type Enqueuer interface {
 	Enqueue(context.Context, []byte) error
 }
 
-type enqamqp struct {
+type enqrabbit struct {
 	memconnect Runnable
 	connection *amqp.Connection
 	channel    *amqp.Channel
@@ -23,9 +23,9 @@ type enqamqp struct {
 	exchange   string
 }
 
-func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) enqamqp {
+func NewEnqueuerRabbit(url string, queue string, cahce time.Duration) enqrabbit {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
-	enq := enqamqp{queue: queue, exchange: exchange}
+	enq := enqrabbit{queue: queue, exchange: exchange}
 	var lock sync.Mutex
 	enq.memconnect = cached(cahce, func(ctx context.Context) error {
 		lock.Lock()
@@ -38,7 +38,7 @@ func NewEnqueuerAmqp(url string, queue string, cahce time.Duration) enqamqp {
 	return enq
 }
 
-func (enq enqamqp) Enqueue(ctx context.Context, message []byte) error {
+func (enq enqrabbit) Enqueue(ctx context.Context, message []byte) error {
 	if err := enq.memconnect(ctx); err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (enq enqamqp) Enqueue(ctx context.Context, message []byte) error {
 	)
 }
 
-func (enq enqamqp) close(context.Context) error {
+func (enq enqrabbit) close(context.Context) error {
 	if enq.channel == nil || enq.connection == nil {
 		return nil
 	}
@@ -67,12 +67,12 @@ func (enq enqamqp) close(context.Context) error {
 	return enq.connection.Close()
 }
 
-func (enq enqamqp) connect(ctx context.Context, url string) error {
+func (enq enqrabbit) connect(_ context.Context, url string) error {
 	connection, err := amqp.Dial(url)
 	if err != nil {
 		return err
 	}
-	//nolint skip `ineffectual assignment`
+	//nolint // skip `ineffectual assignment`
 	channel, err := connection.Channel()
 	if err := channel.ExchangeDeclare(enq.exchange, "direct", true, true, false, false, nil); err != nil {
 		return err
@@ -121,7 +121,7 @@ func (enq enqkafka) Enqueue(ctx context.Context, message []byte) error {
 	return nil
 }
 
-func (enq enqkafka) close(ctx context.Context) error {
+func (enq enqkafka) close(context.Context) error {
 	if enq.connection == nil {
 		return nil
 	}
