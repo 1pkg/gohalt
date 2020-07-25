@@ -97,7 +97,6 @@ func (thr tpanic) accept(ctx context.Context, v tvisitor) {
 
 func (thr tpanic) Acquire(context.Context) error {
 	panic("throttler panic has happened")
-	return nil
 }
 
 func (thr tpanic) Release(context.Context) error {
