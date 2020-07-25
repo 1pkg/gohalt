@@ -32,7 +32,7 @@ func (mobj *mobject) tvisitEach(ctx context.Context, thr *teach) {
 	mobj.obj = thr.current
 }
 
-func (mobj *mobject) tvisitAfter(ctx context.Context, thr *tafter) {
+func (mobj *mobject) tvisitBefore(ctx context.Context, thr *tbefore) {
 	mobj.obj = thr.current
 }
 

@@ -35,7 +35,7 @@ func (umobj umobject) tvisitEach(ctx context.Context, thr *teach) {
 	thr.current = uint64(umobj.obj.(float64))
 }
 
-func (umobj umobject) tvisitAfter(ctx context.Context, thr *tafter) {
+func (umobj umobject) tvisitBefore(ctx context.Context, thr *tbefore) {
 	thr.current = uint64(umobj.obj.(float64))
 }
 

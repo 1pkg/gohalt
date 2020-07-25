@@ -51,7 +51,7 @@ func (m *Meta) tvisitPanic(ctx context.Context, thr *tpanic) {
 func (m *Meta) tvisitEach(ctx context.Context, thr *teach) {
 }
 
-func (m *Meta) tvisitAfter(ctx context.Context, thr *tafter) {
+func (m *Meta) tvisitBefore(ctx context.Context, thr *tbefore) {
 }
 
 func (m *Meta) tvisitChance(ctx context.Context, thr *tchance) {

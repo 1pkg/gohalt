@@ -70,8 +70,8 @@ func (logb *logbuffer) tvisitEach(ctx context.Context, thr *teach) {
 	logb.write("each", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
 }
 
-func (logb *logbuffer) tvisitAfter(ctx context.Context, thr *tafter) {
-	logb.write("after", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
+func (logb *logbuffer) tvisitBefore(ctx context.Context, thr *tbefore) {
+	logb.write("before", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
 }
 
 func (logb *logbuffer) tvisitChance(ctx context.Context, thr *tchance) {
