@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"sync"
@@ -97,7 +96,7 @@ func (thr tpanic) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tpanic) Acquire(context.Context) error {
-	log.Fatal("throttler panic has happened")
+	panic("throttler panic has happened")
 	return nil
 }
 
