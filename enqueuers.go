@@ -72,8 +72,10 @@ func (enq enqrabbit) connect(_ context.Context, url string) error {
 	if err != nil {
 		return err
 	}
-	//nolint // skip `ineffectual assignment`
 	channel, err := connection.Channel()
+	if err != nil {
+		return err
+	}
 	if err := channel.ExchangeDeclare(enq.exchange, "direct", true, true, false, false, nil); err != nil {
 		return err
 	}
