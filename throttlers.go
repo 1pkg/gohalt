@@ -23,7 +23,7 @@ type tvisitor interface {
 	tvisitWait(context.Context, *twait)
 	tvisitPanic(context.Context, *tpanic)
 	tvisitEach(context.Context, *teach)
-	tvisitAfter(context.Context, *tafter)
+	tvisitBefore(context.Context, *tbefore)
 	tvisitChance(context.Context, *tchance)
 	tvisitFixed(context.Context, *tfixed)
 	tvisitRunning(context.Context, *trunning)
@@ -119,37 +119,37 @@ func (thr *teach) accept(ctx context.Context, v tvisitor) {
 func (thr *teach) Acquire(context.Context) error {
 	atomic.AddUint64(&thr.current, 1)
 	if current := atomic.LoadUint64(&thr.current); current%thr.threshold == 0 {
-		return fmt.Errorf("throttler has reached periodic skip %d", current)
+		return fmt.Errorf("throttler has reached threshold %d", current)
 	}
 	return nil
 }
 
-func (thr *teach) Release(context.Context) error {
+func (thr teach) Release(context.Context) error {
 	return nil
 }
 
-type tafter struct {
+type tbefore struct {
 	current   uint64
 	threshold uint64
 }
 
-func NewThrottlerAfter(threshold uint64) *tafter {
-	return &tafter{threshold: threshold}
+func NewThrottlerBefore(threshold uint64) *tbefore {
+	return &tbefore{threshold: threshold}
 }
 
-func (thr *tafter) accept(ctx context.Context, v tvisitor) {
-	v.tvisitAfter(ctx, thr)
+func (thr *tbefore) accept(ctx context.Context, v tvisitor) {
+	v.tvisitBefore(ctx, thr)
 }
 
-func (thr *tafter) Acquire(context.Context) error {
+func (thr *tbefore) Acquire(context.Context) error {
 	atomic.AddUint64(&thr.current, 1)
-	if current := atomic.LoadUint64(&thr.current); current < thr.threshold {
-		return fmt.Errorf("throttler has not reached pass yet %d", current)
+	if current := atomic.LoadUint64(&thr.current); current <= thr.threshold {
+		return fmt.Errorf("throttler has not reached threshold yet %d", current)
 	}
 	return nil
 }
 
-func (thr *tafter) Release(context.Context) error {
+func (thr tbefore) Release(context.Context) error {
 	return nil
 }
 

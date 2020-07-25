@@ -41,8 +41,8 @@ func (gen *generator) tvisitEach(ctx context.Context, thr *teach) {
 	gen.thr = NewThrottlerEach(thr.threshold)
 }
 
-func (gen *generator) tvisitAfter(ctx context.Context, thr *tafter) {
-	gen.thr = NewThrottlerAfter(thr.threshold)
+func (gen *generator) tvisitBefore(ctx context.Context, thr *tbefore) {
+	gen.thr = NewThrottlerBefore(thr.threshold)
 }
 
 func (gen *generator) tvisitChance(ctx context.Context, thr *tchance) {
