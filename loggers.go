@@ -184,7 +184,7 @@ func (logb *logbuffer) tvisitNot(ctx context.Context, thr *tnot) {
 }
 
 func (logb *logbuffer) tvisitSuppress(ctx context.Context, thr *tsuppress) {
-	logb.write("supress", "")
+	logb.write("suppress", "")
 	lprev := logb.lnext()
 	defer lprev()
 	thr.thr.accept(ctx, logb)
