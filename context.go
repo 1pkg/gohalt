@@ -100,6 +100,10 @@ func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) conte
 
 func (ctx ctxthr) Done() <-chan struct{} {
 	ch := make(chan struct{})
+	if err := ctx.Err(); err != nil {
+		close(ch)
+		return ch
+	}
 	_ = loop(ctx.freq, func(ctx context.Context) error {
 		err := ctx.Err()
 		if err != nil {
