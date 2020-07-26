@@ -324,13 +324,13 @@ func NewThrottlerTimed(ctx context.Context, threshold uint64, interval time.Dura
 		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
 		window /= slide
 	}
-	go loop(window, func(ctx context.Context) error {
+	exec(ctx, loop(window, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.current, ^(delta - 1))
 		if current := atomic.LoadUint64(&thr.current); current >= ^uint64(0) {
 			atomic.StoreUint64(&thr.current, 0)
 		}
 		return ctx.Err()
-	})(ctx)
+	}))
 	return ttimed{tafter: thr, interval: interval, slide: slide}
 }
 
@@ -434,10 +434,10 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
 		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 		atomic.StoreUint64(&thr.latency, latency)
-		go once(thr.retention, func(context.Context) error {
+		exec(ctx, once(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
 			return nil
-		})(ctx)
+		}))
 	}
 	return nil
 }
@@ -469,10 +469,10 @@ func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
 	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
-		go once(thr.retention, func(context.Context) error {
+		exec(ctx, once(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
 			return nil
-		})(ctx)
+		}))
 		return fmt.Errorf("throttler has exceed latency limit %s", latency)
 	}
 	return nil

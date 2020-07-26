@@ -45,3 +45,9 @@ func cached(cache time.Duration, run Runnable) Runnable {
 		return nil
 	}
 }
+
+func exec(ctx context.Context, r Runnable) {
+	go func() {
+		_ = r(ctx)
+	}()
+}
