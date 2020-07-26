@@ -12,38 +12,22 @@ func nope(context.Context) error {
 }
 
 func loop(period time.Duration, run Runnable) Runnable {
-	if period == 0 {
-		return nope
-	}
 	return func(ctx context.Context) error {
-		go func() {
-			tick := time.NewTicker(period)
-			defer tick.Stop()
-			for {
-				<-tick.C
-				if err := run(ctx); err != nil {
-					return
-				}
+		tick := time.NewTicker(period)
+		defer tick.Stop()
+		for {
+			<-tick.C
+			if err := run(ctx); err != nil {
+				return err
 			}
-		}()
-		return nil
+		}
 	}
 }
 
 func once(after time.Duration, run Runnable) Runnable {
-	if after == 0 {
-		return func(ctx context.Context) error {
-			return run(ctx)
-		}
-	}
 	return func(ctx context.Context) error {
-		go func() {
-			tick := time.NewTicker(after)
-			defer tick.Stop()
-			<-tick.C
-			_ = run(ctx)
-		}()
-		return nil
+		time.Sleep(after)
+		return run(ctx)
 	}
 }
 
