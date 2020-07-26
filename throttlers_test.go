@@ -3,20 +3,22 @@ package gohalt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestThrottlerPattern(t *testing.T) {
 	table := map[string]struct {
-		thr   Throttler
-		ctx   context.Context
-		run   Runnable
-		errs  []error
-		wait  time.Duration
-		panic bool
+		thr      Throttler
+		ctx      context.Context
+		run      Runnable
+		errs     []error
+		wait     time.Duration
+		panic    bool
+		parallel bool
 	}{
 		"Throttler echo should not throttle on nil input": {
 			thr: NewThrottlerEcho(nil),
@@ -113,6 +115,7 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed running threshold 2"),
 				errors.New("throttler has exceed running threshold 3"),
 			},
+			parallel: true,
 		},
 		"Throttler buffered should throttle on threshold": {
 			thr: NewThrottlerBuffered(1),
@@ -123,27 +126,31 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 				nil,
 			},
-			wait: time.Millisecond,
+			wait:     time.Millisecond,
+			parallel: true,
 		},
 	}
 	for tname, tcase := range table {
 		tcase := tcase
 		t.Run(tname, func(t *testing.T) {
-			for _, err := range tcase.errs {
+			for i, err := range tcase.errs {
 				terr := err
-				go func() {
+				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
+					if tcase.parallel {
+						t.Parallel()
+					}
 					ts := time.Now()
-					require.Equal(t, terr, tcase.thr.Acquire(tcase.ctx))
+					assert.Equal(t, terr, tcase.thr.Acquire(tcase.ctx))
+					assert.Less(t, int64(tcase.wait), int64(time.Since(ts)))
 					if tcase.run != nil {
 						_ = tcase.run(tcase.ctx)
 					}
-					require.Less(t, int64(tcase.wait), int64(time.Since(ts)))
-					require.Equal(t, nil, tcase.thr.Release(tcase.ctx))
-				}()
+					assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+				})
 			}
 			if tcase.panic {
-				require.Panics(t, func() { _ = tcase.thr.Acquire(tcase.ctx) })
-				require.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+				assert.Panics(t, func() { _ = tcase.thr.Acquire(tcase.ctx) })
+				assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
 			}
 		})
 	}

@@ -104,13 +104,13 @@ func (ctx ctxthr) Done() <-chan struct{} {
 		close(ch)
 		return ch
 	}
-	go loop(ctx.freq, func(ctx context.Context) error {
+	exec(ctx, loop(ctx.freq, func(ctx context.Context) error {
 		err := ctx.Err()
 		if err != nil {
 			close(ch)
 		}
 		return err
-	})(ctx)
+	}))
 	return ch
 }
 
