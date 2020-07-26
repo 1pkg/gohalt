@@ -7,29 +7,24 @@ type blatheap struct {
 	lock   sync.Mutex
 }
 
-// Len is the number of elements in the collection.
 func (lh *blatheap) Len() int {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
 	return len(lh.buffer)
 }
 
-// Less reports whether the element with
-// index i should sort before the element with index j.
 func (lh *blatheap) Less(i int, j int) bool {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
 	return lh.buffer[i] < lh.buffer[j]
 }
 
-// Swap swaps the elements with indexes i and j.
 func (lh *blatheap) Swap(i int, j int) {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
 	lh.buffer[i], lh.buffer[j] = lh.buffer[j], lh.buffer[i]
 }
 
-// Push add x as element Len().
 func (lh *blatheap) Push(x interface{}) {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
@@ -38,7 +33,6 @@ func (lh *blatheap) Push(x interface{}) {
 	}
 }
 
-// Pop remove and return element Len() - 1.
 func (lh *blatheap) Pop() interface{} {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
@@ -48,14 +42,12 @@ func (lh *blatheap) Pop() interface{} {
 	return val
 }
 
-// At returns element at position.
 func (lh *blatheap) At(pos int) uint64 {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
 	return lh.buffer[pos]
 }
 
-// Prune cleans heap buffer.
 func (lh *blatheap) Prune() {
 	lh.lock.Lock()
 	defer lh.lock.Unlock()
