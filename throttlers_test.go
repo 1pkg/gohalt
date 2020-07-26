@@ -4,22 +4,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
+type tcase struct {
+	thr  Throttler
+	ctx  context.Context
+	act  Runnable
+	errs []error
+	durs []time.Duration
+}
+
+func (t tcase) run() (err error, dur time.Duration) {
+	defer func() {
+		if msg := recover(); msg != nil {
+			err = errors.New(msg.(string))
+		}
+	}()
+	ts := time.Now()
+	err = t.thr.Acquire(t.ctx)
+	dur = time.Since(ts)
+	if t.act != nil {
+		_ = t.act(t.ctx)
+	}
+	if err := t.thr.Release(t.ctx); err != nil {
+		return err, dur
+	}
+	return
+}
+
+func (t tcase) result(index int) (err error, dur time.Duration) {
+	if index < len(t.errs) {
+		err = t.errs[index]
+	}
+	if index < len(t.durs) {
+		dur = t.durs[index]
+	}
+	return
+}
+
 func TestThrottlerPattern(t *testing.T) {
-	table := map[string]struct {
-		thr      Throttler
-		ctx      context.Context
-		run      Runnable
-		errs     []error
-		wait     time.Duration
-		panic    bool
-		parallel bool
-	}{
+	table := map[string]tcase{
 		"Throttler echo should not throttle on nil input": {
 			thr: NewThrottlerEcho(nil),
 			ctx: context.Background(),
@@ -45,12 +74,20 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 				nil,
 			},
-			wait: time.Millisecond,
+			durs: []time.Duration{
+				time.Millisecond,
+				time.Millisecond,
+				time.Millisecond,
+			},
 		},
 		"Throttler panic should panic": {
-			thr:   NewThrottlerPanic(),
-			ctx:   context.Background(),
-			panic: true,
+			thr: NewThrottlerPanic(),
+			ctx: context.Background(),
+			errs: []error{
+				errors.New("throttler panic has happened"),
+				errors.New("throttler panic has happened"),
+				errors.New("throttler panic has happened"),
+			},
 		},
 		"Throttler each should throttle on threshold": {
 			thr: NewThrottlerEach(3),
@@ -58,19 +95,19 @@ func TestThrottlerPattern(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has reached periodic threshold 3"),
+				errors.New("throttler has reached periodic threshold"),
 				nil,
 				nil,
-				errors.New("throttler has reached periodic threshold 6"),
+				errors.New("throttler has reached periodic threshold"),
 			},
 		},
 		"Throttler before should throttle before threshold": {
 			thr: NewThrottlerBefore(3),
 			ctx: context.Background(),
 			errs: []error{
-				errors.New("throttler has not reached threshold yet 1"),
-				errors.New("throttler has not reached threshold yet 2"),
-				errors.New("throttler has not reached threshold yet 3"),
+				errors.New("throttler has not reached threshold yet"),
+				errors.New("throttler has not reached threshold yet"),
+				errors.New("throttler has not reached threshold yet"),
 				nil,
 				nil,
 				nil,
@@ -80,9 +117,9 @@ func TestThrottlerPattern(t *testing.T) {
 			thr: NewThrottlerChance(1),
 			ctx: context.Background(),
 			errs: []error{
-				errors.New("throttler has caught chance threshold"),
-				errors.New("throttler has caught chance threshold"),
-				errors.New("throttler has caught chance threshold"),
+				errors.New("throttler has reached chance threshold"),
+				errors.New("throttler has reached chance threshold"),
+				errors.New("throttler has reached chance threshold"),
 			},
 		},
 		"Throttler chance should not throttle on 0": {
@@ -101,56 +138,49 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				errors.New("throttler has exceed threshold 4"),
-				errors.New("throttler has exceed threshold 5"),
-				errors.New("throttler has exceed threshold 6"),
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
 			},
 		},
 		"Throttler running should throttle on threshold": {
 			thr: NewThrottlerRunning(1),
 			ctx: context.Background(),
-			run: once(time.Millisecond, nope),
+			act: once(time.Millisecond, nope),
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed running threshold 2"),
-				errors.New("throttler has exceed running threshold 3"),
+				errors.New("throttler has exceed running threshold"),
+				errors.New("throttler has exceed running threshold"),
 			},
-			parallel: true,
 		},
 		"Throttler buffered should throttle on threshold": {
 			thr: NewThrottlerBuffered(1),
 			ctx: context.Background(),
-			run: once(time.Millisecond, nope),
+			act: once(time.Millisecond, nope),
 			errs: []error{
 				nil,
 				nil,
 				nil,
 			},
-			wait:     time.Millisecond,
-			parallel: true,
+			durs: []time.Duration{
+				0,
+				time.Millisecond,
+				time.Millisecond,
+			},
 		},
 	}
 	for tname, tcase := range table {
-		tcase := tcase
 		t.Run(tname, func(t *testing.T) {
-			for i, err := range tcase.errs {
-				terr := err
+			var index int64
+			for i := range tcase.errs {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
-					if tcase.parallel {
-						t.Parallel()
-					}
-					ts := time.Now()
-					assert.Equal(t, terr, tcase.thr.Acquire(tcase.ctx))
-					assert.Less(t, int64(tcase.wait), int64(time.Since(ts)))
-					if tcase.run != nil {
-						_ = tcase.run(tcase.ctx)
-					}
-					assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+					t.Parallel()
+					err, dur := tcase.run()
+					index := int(atomic.AddInt64(&index, 1) - 1)
+					resErr, resDur := tcase.result(index)
+					assert.Equal(t, resErr, err)
+					assert.LessOrEqual(t, int64(resDur), int64(dur))
 				})
-			}
-			if tcase.panic {
-				assert.Panics(t, func() { _ = tcase.thr.Acquire(tcase.ctx) })
-				assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
 			}
 		})
 	}
