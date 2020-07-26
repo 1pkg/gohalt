@@ -118,7 +118,7 @@ func (thr *teach) accept(ctx context.Context, v tvisitor) {
 
 func (thr *teach) Acquire(context.Context) error {
 	if current := atomic.AddUint64(&thr.current, 1); current%thr.threshold == 0 {
-		return fmt.Errorf("throttler has reached periodic threshold %d", current)
+		return errors.New("throttler has reached periodic threshold")
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func (thr *tbefore) accept(ctx context.Context, v tvisitor) {
 
 func (thr *tbefore) Acquire(context.Context) error {
 	if current := atomic.AddUint64(&thr.current, 1); current <= thr.threshold {
-		return fmt.Errorf("throttler has not reached threshold yet %d", current)
+		return errors.New("throttler has not reached threshold yet")
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (thr tchance) accept(ctx context.Context, v tvisitor) {
 
 func (thr tchance) Acquire(context.Context) error {
 	if thr.threshold > 1.0-rand.Float64() {
-		return errors.New("throttler has caught chance threshold")
+		return errors.New("throttler has reached chance threshold")
 	}
 	return nil
 }
@@ -195,7 +195,7 @@ func (thr *tafter) accept(ctx context.Context, v tvisitor) {
 
 func (thr *tafter) Acquire(context.Context) error {
 	if current := atomic.AddUint64(&thr.current, 1); current > thr.threshold {
-		return fmt.Errorf("throttler has exceed threshold %d", current)
+		return errors.New("throttler has exceed threshold")
 	}
 	return nil
 }
@@ -219,7 +219,7 @@ func (thr *trunning) accept(ctx context.Context, v tvisitor) {
 
 func (thr *trunning) Acquire(context.Context) error {
 	if running := atomic.AddUint64(&thr.running, 1); running > thr.threshold {
-		return fmt.Errorf("throttler has exceed running threshold %d", running)
+		return errors.New("throttler has exceed running threshold")
 	}
 	return nil
 }
@@ -287,7 +287,7 @@ func (thr tpriority) Acquire(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.limit)
 	val, ok := thr.running.Load(priority)
 	if !ok {
-		return fmt.Errorf("throttler hasn't found priority %d", priority)
+		return fmt.Errorf("throttler hasn't found any priority %d", priority)
 	}
 	running := val.(chan struct{})
 	running <- struct{}{}
@@ -298,16 +298,14 @@ func (thr tpriority) Release(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.limit)
 	val, ok := thr.running.Load(priority)
 	if !ok {
-		return fmt.Errorf("throttler hasn't found priority %d", priority)
+		return fmt.Errorf("throttler hasn't found any priority %d", priority)
 	}
 	running := val.(chan struct{})
 	select {
 	case <-running:
 		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
-		return errors.New("throttler has nothing to release")
+		return nil
 	}
 }
 
@@ -362,18 +360,11 @@ func (thr tmonitor) accept(ctx context.Context, v tvisitor) {
 func (thr tmonitor) Acquire(ctx context.Context) error {
 	stats, err := thr.mnt.Stats(ctx)
 	if err != nil {
-		return fmt.Errorf("throttler error has happened %w", err)
+		return fmt.Errorf("throttler hasn't found any stats %w", err)
 	}
 	if stats.MEMAlloc >= thr.limit.MEMAlloc || stats.MEMSystem >= thr.limit.MEMSystem ||
 		stats.CPUPause >= thr.limit.CPUPause || stats.CPUUsage >= thr.limit.CPUUsage {
-		return fmt.Errorf(
-			`throttler has exceed stats limits
-alloc %d mb, system %d mb, avg gc cpu pause %s, avg cpu usage %.2f%%`,
-			stats.MEMAlloc/1024,
-			stats.MEMSystem/1024,
-			time.Duration(stats.CPUPause),
-			stats.CPUUsage,
-		)
+		return errors.New("throttler has exceed stats limits")
 	}
 	return nil
 }
@@ -397,7 +388,7 @@ func (thr tmetric) accept(ctx context.Context, v tvisitor) {
 func (thr tmetric) Acquire(ctx context.Context) error {
 	val, err := thr.mtc.Query(ctx)
 	if err != nil {
-		return fmt.Errorf("throttler error has happened %w", err)
+		return fmt.Errorf("throttler hasn't found any metric %w", err)
 	}
 	if val {
 		return errors.New("throttler metric has been reached")
@@ -425,7 +416,7 @@ func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
 
 func (thr tlatency) Acquire(context.Context) error {
 	if latency := time.Duration(atomic.LoadUint64(&thr.latency)); latency > thr.limit {
-		return fmt.Errorf("throttler has exceed latency limit %s", latency)
+		return errors.New("throttler has exceed latency threshold")
 	}
 	return nil
 }
@@ -473,7 +464,7 @@ func (thr *tpercentile) Acquire(ctx context.Context) error {
 			thr.latencies.Prune()
 			return nil
 		}))
-		return fmt.Errorf("throttler has exceed latency limit %s", latency)
+		return errors.New("throttler has exceed latency threshold")
 	}
 	return nil
 }
@@ -536,19 +527,14 @@ func (thr tcontext) accept(ctx context.Context, v tvisitor) {
 func (thr tcontext) Acquire(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
+		return fmt.Errorf("throttler has received context error %w", ctx.Err())
 	default:
 		return nil
 	}
 }
 
 func (thr tcontext) Release(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
-	default:
-		return nil
-	}
+	return nil
 }
 
 type tenqueue struct {
@@ -564,17 +550,18 @@ func (thr tenqueue) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
-	if marshaler, data := ctxMarshaler(ctx), ctxData(ctx); marshaler != nil && data != nil {
-		message, err := marshaler(data)
-		if err != nil {
-			return fmt.Errorf("throttler can't enqueue %w", err)
-		}
-		if err := thr.enq.Enqueue(ctx, message); err != nil {
-			return fmt.Errorf("throttler can't enqueue %w", err)
-		}
-		return nil
+	marshaler, data := ctxMarshaler(ctx), ctxData(ctx)
+	if marshaler == nil || data == nil {
+		return errors.New("throttler hasn't found any message")
 	}
-	return errors.New("throttler can't find any data")
+	message, err := marshaler(data)
+	if err != nil {
+		return fmt.Errorf("throttler hasn't sent any message %w", err)
+	}
+	if err := thr.enq.Enqueue(ctx, message); err != nil {
+		return fmt.Errorf("throttler hasn't sent any message %w", err)
+	}
+	return nil
 }
 
 func (thr tenqueue) Release(ctx context.Context) error {
@@ -599,7 +586,7 @@ func (thr tkeyed) Acquire(ctx context.Context) error {
 		r, _ := thr.keys.LoadOrStore(key, thr.gen.Generate(ctx, key))
 		return r.(Throttler).Acquire(ctx)
 	}
-	return errors.New("throttler can't find any key")
+	return errors.New("throttler hasn't found any key")
 }
 
 func (thr tkeyed) Release(ctx context.Context) error {
@@ -607,9 +594,8 @@ func (thr tkeyed) Release(ctx context.Context) error {
 		if r, ok := thr.keys.Load(key); ok {
 			return r.(Throttler).Release(ctx)
 		}
-		return errors.New("throttler has nothing to release")
 	}
-	return errors.New("throttler can't find any key")
+	return nil
 }
 
 type tall []Throttler
@@ -628,7 +614,7 @@ func (thrs tall) Acquire(ctx context.Context) error {
 			return nil
 		}
 	}
-	return errors.New("throttler child errors have happened")
+	return errors.New("throttler has received one derived error")
 }
 
 func (thrs tall) Release(ctx context.Context) error {
@@ -637,7 +623,7 @@ func (thrs tall) Release(ctx context.Context) error {
 			return nil
 		}
 	}
-	return errors.New("throttler child errors have happened")
+	return nil
 }
 
 type tany []Throttler
@@ -651,33 +637,36 @@ func (thrs tany) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {
-	var err error
-	var once sync.Once
+	errch := make(chan error, len(thrs))
+	var wg sync.WaitGroup
 	for _, thr := range thrs {
+		wg.Add(1)
 		go func(thr Throttler) {
-			if threrr := thr.Acquire(ctx); threrr != nil {
-				once.Do(func() {
-					err = fmt.Errorf("throttler child error has happened %w", threrr)
-				})
+			if err := thr.Acquire(ctx); err != nil {
+				errch <- errors.New("throttler has received multiple derived errors")
 			}
+			wg.Done()
 		}(thr)
 	}
-	return err
+	wg.Wait()
+	close(errch)
+	for err := range errch {
+		return err
+	}
+	return nil
 }
 
 func (thrs tany) Release(ctx context.Context) error {
-	var err error
-	var once sync.Once
+	var wg sync.WaitGroup
 	for _, thr := range thrs {
+		wg.Add(1)
 		go func(thr Throttler) {
-			if threrr := thr.Release(ctx); threrr != nil {
-				once.Do(func() {
-					err = fmt.Errorf("throttler child error has happened %w", threrr)
-				})
-			}
+			_ = thr.Release(ctx)
+			wg.Done()
 		}(thr)
 	}
-	return err
+	wg.Wait()
+	return nil
 }
 
 type tnot struct {
@@ -696,14 +685,12 @@ func (thr tnot) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler child error hasn't happened")
+	return errors.New("throttler hasn't received any derived errors")
 }
 
 func (thr tnot) Release(ctx context.Context) error {
-	if err := thr.thr.Release(ctx); err != nil {
-		return nil
-	}
-	return errors.New("throttler child error hasn't happened")
+	_ = thr.thr.Release(ctx)
+	return nil
 }
 
 type tsuppress struct {
