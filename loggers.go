@@ -91,7 +91,7 @@ func (logb *logbuffer) tvisitBuffered(ctx context.Context, thr *tbuffered) {
 }
 
 func (logb *logbuffer) tvisitPriority(ctx context.Context, thr *tpriority) {
-	logb.write("priority", fmt.Sprintf("%d with %d", thr.size, thr.limit))
+	logb.write("priority", fmt.Sprintf("%d with %d", thr.capacity, thr.limit))
 }
 
 func (logb *logbuffer) tvisitTimed(ctx context.Context, thr *ttimed) {

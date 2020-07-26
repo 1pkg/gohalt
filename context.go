@@ -39,7 +39,7 @@ func WithPriority(ctx context.Context, priority uint8) context.Context {
 
 func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	if val := ctx.Value(ghctxpriority); val != nil {
-		if priority, ok := val.(uint8); ok && priority > 0 && priority <= limit {
+		if priority, ok := val.(uint8); ok && priority <= limit {
 			return priority
 		}
 	}

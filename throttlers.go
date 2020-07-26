@@ -236,8 +236,8 @@ type tbuffered struct {
 	running chan struct{}
 }
 
-func NewThrottlerBuffered(size uint64) *tbuffered {
-	return &tbuffered{running: make(chan struct{}, size)}
+func NewThrottlerBuffered(capacity uint64) *tbuffered {
+	return &tbuffered{running: make(chan struct{}, capacity)}
 }
 
 func (thr *tbuffered) accept(ctx context.Context, v tvisitor) {
@@ -259,22 +259,22 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	running *sync.Map
-	size    uint64
-	limit   uint8
+	running  *sync.Map
+	capacity uint64
+	limit    uint8
 }
 
-func NewThrottlerPriority(size uint64, limit uint8) tpriority {
+func NewThrottlerPriority(capacity uint64, limit uint8) tpriority {
 	if limit == 0 {
 		limit = 1
 	}
 	running := &sync.Map{}
 	sum := float64(limit) / 2 * float64((2 + (limit - 1)))
-	koef := uint64(math.Ceil(float64(size) / sum))
+	koef := uint64(math.Ceil(float64(capacity) / sum))
 	for i := uint8(1); i <= limit; i++ {
 		running.Store(i, make(chan struct{}, uint64(i)*koef))
 	}
-	thr := tpriority{size: size, limit: limit}
+	thr := tpriority{capacity: capacity, limit: limit}
 	thr.running = running
 	return thr
 }
@@ -285,10 +285,7 @@ func (thr tpriority) accept(ctx context.Context, v tvisitor) {
 
 func (thr tpriority) Acquire(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.limit)
-	val, ok := thr.running.Load(priority)
-	if !ok {
-		return fmt.Errorf("throttler hasn't found any priority %d", priority)
-	}
+	val, _ := thr.running.Load(priority)
 	running := val.(chan struct{})
 	running <- struct{}{}
 	return nil
@@ -296,10 +293,7 @@ func (thr tpriority) Acquire(ctx context.Context) error {
 
 func (thr tpriority) Release(ctx context.Context) error {
 	priority := ctxPriority(ctx, thr.limit)
-	val, ok := thr.running.Load(priority)
-	if !ok {
-		return fmt.Errorf("throttler hasn't found any priority %d", priority)
-	}
+	val, _ := thr.running.Load(priority)
 	running := val.(chan struct{})
 	select {
 	case <-running:
