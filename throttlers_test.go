@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestThrottlerPattern(t *testing.T) {
 	table := map[string]struct {
 		thr   Throttler
 		ctx   context.Context
+		run   Runnable
 		errs  []error
 		wait  time.Duration
 		panic bool
@@ -103,18 +104,46 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed threshold 6"),
 			},
 		},
+		"Throttler running should throttle on threshold": {
+			thr: NewThrottlerRunning(1),
+			ctx: context.Background(),
+			run: once(time.Millisecond, nope),
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed running threshold 2"),
+				errors.New("throttler has exceed running threshold 3"),
+			},
+		},
+		"Throttler buffered should throttle on threshold": {
+			thr: NewThrottlerBuffered(1),
+			ctx: context.Background(),
+			run: once(time.Millisecond, nope),
+			errs: []error{
+				nil,
+				nil,
+				nil,
+			},
+			wait: time.Millisecond,
+		},
 	}
 	for tname, tcase := range table {
+		tcase := tcase
 		t.Run(tname, func(t *testing.T) {
 			for _, err := range tcase.errs {
-				ts := time.Now()
-				assert.Equal(t, err, tcase.thr.Acquire(tcase.ctx))
-				assert.Less(t, int64(tcase.wait), int64(time.Since(ts)))
-				assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+				terr := err
+				go func() {
+					ts := time.Now()
+					require.Equal(t, terr, tcase.thr.Acquire(tcase.ctx))
+					if tcase.run != nil {
+						_ = tcase.run(tcase.ctx)
+					}
+					require.Less(t, int64(tcase.wait), int64(time.Since(ts)))
+					require.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+				}()
 			}
 			if tcase.panic {
-				assert.Panics(t, func() { _ = tcase.thr.Acquire(tcase.ctx) })
-				assert.Equal(t, nil, tcase.thr.Release(tcase.ctx))
+				require.Panics(t, func() { _ = tcase.thr.Acquire(tcase.ctx) })
+				require.Equal(t, nil, tcase.thr.Release(tcase.ctx))
 			}
 		})
 	}

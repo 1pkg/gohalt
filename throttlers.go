@@ -123,7 +123,7 @@ func (thr *teach) Acquire(context.Context) error {
 	return nil
 }
 
-func (thr teach) Release(context.Context) error {
+func (thr *teach) Release(context.Context) error {
 	return nil
 }
 
@@ -147,7 +147,7 @@ func (thr *tbefore) Acquire(context.Context) error {
 	return nil
 }
 
-func (thr tbefore) Release(context.Context) error {
+func (thr *tbefore) Release(context.Context) error {
 	return nil
 }
 
@@ -160,7 +160,7 @@ func NewThrottlerChance(threshold float64) tchance {
 	if threshold > 1.0 {
 		threshold = 1.0
 	}
-	// reseed rand on each throttler
+	// reseed rand on each new call
 	rand.Seed(time.Now().UnixNano())
 	return tchance{threshold: threshold}
 }
@@ -200,7 +200,7 @@ func (thr *tafter) Acquire(context.Context) error {
 	return nil
 }
 
-func (thr tafter) Release(context.Context) error {
+func (thr *tafter) Release(context.Context) error {
 	return nil
 }
 
@@ -218,18 +218,17 @@ func (thr *trunning) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *trunning) Acquire(context.Context) error {
-	if running := atomic.LoadUint64(&thr.running); running > thr.threshold {
+	if running := atomic.AddUint64(&thr.running, 1); running > thr.threshold {
 		return fmt.Errorf("throttler has exceed running threshold %d", running)
 	}
-	atomic.AddUint64(&thr.running, 1)
 	return nil
 }
 
 func (thr *trunning) Release(context.Context) error {
-	if running := atomic.LoadUint64(&thr.running); running <= 0 {
-		return errors.New("throttler has nothing to release")
+	if running := atomic.AddUint64(&thr.running, ^uint64(0)); int64(running) < 0 {
+		// fix running discrepancies
+		atomic.AddUint64(&thr.running, 1)
 	}
-	atomic.AddUint64(&thr.running, ^uint64(0))
 	return nil
 }
 
@@ -254,10 +253,8 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 	select {
 	case <-thr.running:
 		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("throttler context error has happened %w", ctx.Err())
 	default:
-		return errors.New("throttler has nothing to release")
+		return nil
 	}
 }
 
@@ -327,7 +324,7 @@ func NewThrottlerTimed(ctx context.Context, threshold uint64, interval time.Dura
 		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
 		window /= slide
 	}
-	_ = loop(window, func(ctx context.Context) error {
+	go loop(window, func(ctx context.Context) error {
 		atomic.AddUint64(&thr.current, ^(delta - 1))
 		if current := atomic.LoadUint64(&thr.current); current >= ^uint64(0) {
 			atomic.StoreUint64(&thr.current, 0)
@@ -437,7 +434,7 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
 		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 		atomic.StoreUint64(&thr.latency, latency)
-		_ = once(thr.retention, func(context.Context) error {
+		go once(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
 			return nil
 		})(ctx)
@@ -472,7 +469,7 @@ func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
 	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
-		_ = once(thr.retention, func(context.Context) error {
+		go once(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
 			return nil
 		})(ctx)
