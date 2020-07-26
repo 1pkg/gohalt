@@ -19,20 +19,27 @@ type tcase struct {
 	durs []time.Duration
 }
 
-func (t tcase) run() (err error, dur time.Duration) {
-	defer func() {
-		if msg := recover(); msg != nil {
-			err = errors.New(msg.(string))
-		}
-	}()
+func (t tcase) run(index int) (err error, dur time.Duration) {
 	ts := time.Now()
-	err = t.thr.Acquire(t.ctx)
+	// try catch panic into error
+	func() {
+		defer func() {
+			if msg := recover(); msg != nil {
+				err = errors.New(msg.(string))
+			}
+		}()
+		err = t.thr.Acquire(t.ctx)
+	}()
 	dur = time.Since(ts)
+	// run additional payload only if present
 	if t.act != nil {
 		_ = t.act(t.ctx)
 	}
-	if err := t.thr.Release(t.ctx); err != nil {
-		return err, dur
+	// imitate over releasing
+	for i := 0; i < index+1; i++ {
+		if err := t.thr.Release(t.ctx); err != nil {
+			return err, dur
+		}
 	}
 	return
 }
@@ -122,6 +129,15 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has reached chance threshold"),
 			},
 		},
+		"Throttler chance should throttle on >1": {
+			thr: NewThrottlerChance(10.10),
+			ctx: context.Background(),
+			errs: []error{
+				errors.New("throttler has reached chance threshold"),
+				errors.New("throttler has reached chance threshold"),
+				errors.New("throttler has reached chance threshold"),
+			},
+		},
 		"Throttler chance should not throttle on 0": {
 			thr: NewThrottlerChance(0),
 			ctx: context.Background(),
@@ -175,9 +191,9 @@ func TestThrottlerPattern(t *testing.T) {
 			for i := range tcase.errs {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
 					t.Parallel()
-					err, dur := tcase.run()
 					index := int(atomic.AddInt64(&index, 1) - 1)
 					resErr, resDur := tcase.result(index)
+					err, dur := tcase.run(index)
 					assert.Equal(t, resErr, err)
 					assert.LessOrEqual(t, int64(resDur), int64(dur))
 				})
