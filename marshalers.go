@@ -39,7 +39,7 @@ func (mobj *mobject) tvisitBefore(ctx context.Context, thr *tbefore) {
 func (mobj *mobject) tvisitChance(ctx context.Context, thr *tchance) {
 }
 
-func (mobj *mobject) tvisitFixed(ctx context.Context, thr *tfixed) {
+func (mobj *mobject) tvisitAfter(ctx context.Context, thr *tafter) {
 	mobj.obj = thr.current
 }
 
