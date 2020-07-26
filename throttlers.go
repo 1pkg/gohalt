@@ -25,7 +25,7 @@ type tvisitor interface {
 	tvisitEach(context.Context, *teach)
 	tvisitBefore(context.Context, *tbefore)
 	tvisitChance(context.Context, *tchance)
-	tvisitFixed(context.Context, *tfixed)
+	tvisitAfter(context.Context, *tafter)
 	tvisitRunning(context.Context, *trunning)
 	tvisitBuffered(context.Context, *tbuffered)
 	tvisitPriority(context.Context, *tpriority)
@@ -61,7 +61,7 @@ func (thr techo) Acquire(context.Context) error {
 }
 
 func (thr techo) Release(context.Context) error {
-	return thr.err
+	return nil
 }
 
 type twait struct {
@@ -117,9 +117,8 @@ func (thr *teach) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *teach) Acquire(context.Context) error {
-	atomic.AddUint64(&thr.current, 1)
-	if current := atomic.LoadUint64(&thr.current); current%thr.threshold == 0 {
-		return fmt.Errorf("throttler has reached threshold %d", current)
+	if current := atomic.AddUint64(&thr.current, 1); current%thr.threshold == 0 {
+		return fmt.Errorf("throttler has reached periodic threshold %d", current)
 	}
 	return nil
 }
@@ -142,8 +141,7 @@ func (thr *tbefore) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tbefore) Acquire(context.Context) error {
-	atomic.AddUint64(&thr.current, 1)
-	if current := atomic.LoadUint64(&thr.current); current <= thr.threshold {
+	if current := atomic.AddUint64(&thr.current, 1); current <= thr.threshold {
 		return fmt.Errorf("throttler has not reached threshold yet %d", current)
 	}
 	return nil
@@ -154,15 +152,17 @@ func (thr tbefore) Release(context.Context) error {
 }
 
 type tchance struct {
-	percentage float64
+	threshold float64
 }
 
-func NewThrottlerChance(percentage float64) tchance {
-	percentage = math.Abs(percentage)
-	if percentage > 1.0 {
-		percentage = 1.0
+func NewThrottlerChance(threshold float64) tchance {
+	threshold = math.Abs(threshold)
+	if threshold > 1.0 {
+		threshold = 1.0
 	}
-	return tchance{percentage: percentage}
+	// reseed rand on each throttler
+	rand.Seed(time.Now().UnixNano())
+	return tchance{threshold: threshold}
 }
 
 func (thr tchance) accept(ctx context.Context, v tvisitor) {
@@ -170,8 +170,8 @@ func (thr tchance) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tchance) Acquire(context.Context) error {
-	if thr.percentage > 1.0-rand.Float64() {
-		return errors.New("throttler has missed a chance")
+	if thr.threshold > 1.0-rand.Float64() {
+		return errors.New("throttler has caught chance threshold")
 	}
 	return nil
 }
@@ -180,38 +180,37 @@ func (thr tchance) Release(context.Context) error {
 	return nil
 }
 
-type tfixed struct {
-	current uint64
-	limit   uint64
+type tafter struct {
+	current   uint64
+	threshold uint64
 }
 
-func NewThrottlerFixed(limit uint64) *tfixed {
-	return &tfixed{limit: limit}
+func NewThrottlerAfter(threshold uint64) *tafter {
+	return &tafter{threshold: threshold}
 }
 
-func (thr *tfixed) accept(ctx context.Context, v tvisitor) {
-	v.tvisitFixed(ctx, thr)
+func (thr *tafter) accept(ctx context.Context, v tvisitor) {
+	v.tvisitAfter(ctx, thr)
 }
 
-func (thr *tfixed) Acquire(context.Context) error {
-	if current := atomic.LoadUint64(&thr.current); current > thr.limit {
-		return fmt.Errorf("throttler has exceed fixed limit %d", current)
+func (thr *tafter) Acquire(context.Context) error {
+	if current := atomic.AddUint64(&thr.current, 1); current > thr.threshold {
+		return fmt.Errorf("throttler has exceed threshold %d", current)
 	}
-	atomic.AddUint64(&thr.current, 1)
 	return nil
 }
 
-func (thr *tfixed) Release(context.Context) error {
+func (thr tafter) Release(context.Context) error {
 	return nil
 }
 
 type trunning struct {
-	running uint64
-	limit   uint64
+	running   uint64
+	threshold uint64
 }
 
-func NewThrottlerRunning(limit uint64) *trunning {
-	return &trunning{limit: limit}
+func NewThrottlerRunning(threshold uint64) *trunning {
+	return &trunning{threshold: threshold}
 }
 
 func (thr *trunning) accept(ctx context.Context, v tvisitor) {
@@ -219,8 +218,8 @@ func (thr *trunning) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *trunning) Acquire(context.Context) error {
-	if running := atomic.LoadUint64(&thr.running); running > thr.limit {
-		return fmt.Errorf("throttler has exceed running limit %d", running)
+	if running := atomic.LoadUint64(&thr.running); running > thr.threshold {
+		return fmt.Errorf("throttler has exceed running threshold %d", running)
 	}
 	atomic.AddUint64(&thr.running, 1)
 	return nil
@@ -316,14 +315,14 @@ func (thr tpriority) Release(ctx context.Context) error {
 }
 
 type ttimed struct {
-	*tfixed
+	*tafter
 	interval time.Duration
 	slide    time.Duration
 }
 
-func NewThrottlerTimed(ctx context.Context, limit uint64, interval time.Duration, slide time.Duration) ttimed {
-	thr := NewThrottlerFixed(limit)
-	delta, window := limit, interval
+func NewThrottlerTimed(ctx context.Context, threshold uint64, interval time.Duration, slide time.Duration) ttimed {
+	thr := NewThrottlerAfter(threshold)
+	delta, window := threshold, interval
 	if slide > 0 && interval > slide {
 		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
 		window /= slide
@@ -335,7 +334,7 @@ func NewThrottlerTimed(ctx context.Context, limit uint64, interval time.Duration
 		}
 		return ctx.Err()
 	})(ctx)
-	return ttimed{tfixed: thr, interval: interval, slide: slide}
+	return ttimed{tafter: thr, interval: interval, slide: slide}
 }
 
 func (thr ttimed) accept(ctx context.Context, v tvisitor) {
@@ -343,11 +342,11 @@ func (thr ttimed) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr ttimed) Acquire(ctx context.Context) error {
-	return thr.tfixed.Acquire(ctx)
+	return thr.tafter.Acquire(ctx)
 }
 
 func (thr ttimed) Release(ctx context.Context) error {
-	return thr.tfixed.Release(ctx)
+	return thr.tafter.Release(ctx)
 }
 
 type tmonitor struct {
@@ -516,9 +515,9 @@ func (thr *tadaptive) accept(ctx context.Context, v tvisitor) {
 func (thr *tadaptive) Acquire(ctx context.Context) error {
 	err := thr.thr.Acquire(ctx)
 	if err != nil {
-		atomic.AddUint64(&thr.ttimed.limit, ^(thr.step*thr.step - 1))
+		atomic.AddUint64(&thr.ttimed.threshold, ^(thr.step*thr.step - 1))
 	} else {
-		atomic.AddUint64(&thr.ttimed.limit, thr.step)
+		atomic.AddUint64(&thr.ttimed.threshold, thr.step)
 	}
 	return thr.ttimed.Acquire(ctx)
 }

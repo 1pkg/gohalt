@@ -57,9 +57,9 @@ func (m *Meta) tvisitBefore(ctx context.Context, thr *tbefore) {
 func (m *Meta) tvisitChance(ctx context.Context, thr *tchance) {
 }
 
-func (m *Meta) tvisitFixed(ctx context.Context, thr *tfixed) {
-	m.Limit = thr.limit
-	m.Remaining = thr.limit - thr.current
+func (m *Meta) tvisitAfter(ctx context.Context, thr *tafter) {
+	m.Limit = thr.threshold
+	m.Remaining = thr.threshold - thr.current
 }
 
 func (m *Meta) tvisitRunning(ctx context.Context, thr *trunning) {
@@ -72,8 +72,8 @@ func (m *Meta) tvisitPriority(ctx context.Context, thr *tpriority) {
 }
 
 func (m *Meta) tvisitTimed(ctx context.Context, thr *ttimed) {
-	m.Limit = thr.limit
-	m.Remaining = thr.limit - thr.current
+	m.Limit = thr.threshold
+	m.Remaining = thr.threshold - thr.current
 	m.Reset = uint64(thr.interval)
 }
 
@@ -90,8 +90,8 @@ func (m *Meta) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 }
 
 func (m *Meta) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
-	m.Limit = thr.limit
-	m.Remaining = thr.limit - thr.current
+	m.Limit = thr.threshold
+	m.Remaining = thr.threshold - thr.current
 	m.Reset = uint64(thr.interval)
 }
 

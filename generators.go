@@ -46,15 +46,15 @@ func (gen *generator) tvisitBefore(ctx context.Context, thr *tbefore) {
 }
 
 func (gen *generator) tvisitChance(ctx context.Context, thr *tchance) {
-	gen.thr = NewThrottlerChance(thr.percentage)
+	gen.thr = NewThrottlerChance(thr.threshold)
 }
 
-func (gen *generator) tvisitFixed(ctx context.Context, thr *tfixed) {
-	gen.thr = NewThrottlerFixed(thr.limit)
+func (gen *generator) tvisitAfter(ctx context.Context, thr *tafter) {
+	gen.thr = NewThrottlerAfter(thr.threshold)
 }
 
 func (gen *generator) tvisitRunning(ctx context.Context, thr *trunning) {
-	gen.thr = NewThrottlerRunning(thr.limit)
+	gen.thr = NewThrottlerRunning(thr.threshold)
 }
 
 func (gen *generator) tvisitBuffered(ctx context.Context, thr *tbuffered) {
@@ -66,7 +66,7 @@ func (gen *generator) tvisitPriority(ctx context.Context, thr *tpriority) {
 }
 
 func (gen *generator) tvisitTimed(ctx context.Context, thr *ttimed) {
-	gen.thr = NewThrottlerTimed(ctx, thr.limit, thr.interval, thr.slide)
+	gen.thr = NewThrottlerTimed(ctx, thr.threshold, thr.interval, thr.slide)
 }
 
 func (gen *generator) tvisitMonitor(ctx context.Context, thr *tmonitor) {
@@ -89,7 +89,7 @@ func (gen *generator) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	gen = NewGenerator(thr.thr)
 	gen.thr = NewThrottlerAdaptive(
 		ctx,
-		thr.limit,
+		thr.threshold,
 		thr.interval,
 		thr.slide,
 		thr.step,

@@ -75,15 +75,15 @@ func (logb *logbuffer) tvisitBefore(ctx context.Context, thr *tbefore) {
 }
 
 func (logb *logbuffer) tvisitChance(ctx context.Context, thr *tchance) {
-	logb.write("chance", fmt.Sprintf("%f", thr.percentage))
+	logb.write("chance", fmt.Sprintf("%f", thr.threshold))
 }
 
-func (logb *logbuffer) tvisitFixed(ctx context.Context, thr *tfixed) {
-	logb.write("fixed", fmt.Sprintf("%d of %d", thr.current, thr.limit))
+func (logb *logbuffer) tvisitAfter(ctx context.Context, thr *tafter) {
+	logb.write("after", fmt.Sprintf("%d of %d", thr.current, thr.threshold))
 }
 
 func (logb *logbuffer) tvisitRunning(ctx context.Context, thr *trunning) {
-	logb.write("running", fmt.Sprintf("%d of %d", thr.running, thr.limit))
+	logb.write("running", fmt.Sprintf("%d of %d", thr.running, thr.threshold))
 }
 
 func (logb *logbuffer) tvisitBuffered(ctx context.Context, thr *tbuffered) {
@@ -95,7 +95,7 @@ func (logb *logbuffer) tvisitPriority(ctx context.Context, thr *tpriority) {
 }
 
 func (logb *logbuffer) tvisitTimed(ctx context.Context, thr *ttimed) {
-	logb.write("timed", fmt.Sprintf("%d of %d in %s", thr.current, thr.limit, thr.interval))
+	logb.write("timed", fmt.Sprintf("%d of %d in %s", thr.current, thr.threshold, thr.interval))
 }
 
 func (logb *logbuffer) tvisitMonitor(ctx context.Context, thr *tmonitor) {
@@ -129,7 +129,7 @@ func (logb *logbuffer) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	logb.write("adaptive", fmt.Sprintf(
 		"%d of %d in %s with %d",
 		thr.current,
-		thr.limit,
+		thr.threshold,
 		thr.interval,
 		thr.step,
 	))

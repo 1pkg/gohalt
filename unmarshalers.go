@@ -42,7 +42,7 @@ func (umobj umobject) tvisitBefore(ctx context.Context, thr *tbefore) {
 func (umobj umobject) tvisitChance(ctx context.Context, thr *tchance) {
 }
 
-func (umobj umobject) tvisitFixed(ctx context.Context, thr *tfixed) {
+func (umobj umobject) tvisitAfter(ctx context.Context, thr *tafter) {
 	thr.current = uint64(umobj.obj.(float64))
 }
 
