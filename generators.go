@@ -62,7 +62,7 @@ func (gen *generator) tvisitBuffered(ctx context.Context, thr *tbuffered) {
 }
 
 func (gen *generator) tvisitPriority(ctx context.Context, thr *tpriority) {
-	gen.thr = NewThrottlerPriority(thr.size, thr.limit)
+	gen.thr = NewThrottlerPriority(thr.capacity, thr.limit)
 }
 
 func (gen *generator) tvisitTimed(ctx context.Context, thr *ttimed) {

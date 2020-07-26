@@ -12,14 +12,20 @@ import (
 )
 
 type tcase struct {
+	tms  uint64
 	thr  Throttler
-	ctx  context.Context
 	act  Runnable
+	ctxs []context.Context
 	errs []error
 	durs []time.Duration
 }
 
 func (t tcase) run(index int) (err error, dur time.Duration) {
+	// get context with fallback
+	ctx := context.Background()
+	if index < len(t.ctxs) {
+		ctx = t.ctxs[index]
+	}
 	ts := time.Now()
 	// try catch panic into error
 	func() {
@@ -28,16 +34,16 @@ func (t tcase) run(index int) (err error, dur time.Duration) {
 				err = errors.New(msg.(string))
 			}
 		}()
-		err = t.thr.Acquire(t.ctx)
+		err = t.thr.Acquire(ctx)
 	}()
 	dur = time.Since(ts)
 	// run additional payload only if present
 	if t.act != nil {
-		_ = t.act(t.ctx)
+		_ = t.act(ctx)
 	}
 	// imitate over releasing
 	for i := 0; i < index+1; i++ {
-		if err := t.thr.Release(t.ctx); err != nil {
+		if err := t.thr.Release(ctx); err != nil {
 			return err, dur
 		}
 	}
@@ -57,17 +63,12 @@ func (t tcase) result(index int) (err error, dur time.Duration) {
 func TestThrottlerPattern(t *testing.T) {
 	table := map[string]tcase{
 		"Throttler echo should not throttle on nil input": {
+			tms: 3,
 			thr: NewThrottlerEcho(nil),
-			ctx: context.Background(),
-			errs: []error{
-				nil,
-				nil,
-				nil,
-			},
 		},
 		"Throttler echo should throttle on not nil input": {
+			tms: 3,
 			thr: NewThrottlerEcho(errors.New("test")),
-			ctx: context.Background(),
 			errs: []error{
 				errors.New("test"),
 				errors.New("test"),
@@ -75,12 +76,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler wait should sleep for millisecond": {
+			tms: 3,
 			thr: NewThrottlerWait(time.Millisecond),
-			errs: []error{
-				nil,
-				nil,
-				nil,
-			},
 			durs: []time.Duration{
 				time.Millisecond,
 				time.Millisecond,
@@ -88,8 +85,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler panic should panic": {
+			tms: 3,
 			thr: NewThrottlerPanic(),
-			ctx: context.Background(),
 			errs: []error{
 				errors.New("throttler panic has happened"),
 				errors.New("throttler panic has happened"),
@@ -97,8 +94,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler each should throttle on threshold": {
+			tms: 6,
 			thr: NewThrottlerEach(3),
-			ctx: context.Background(),
 			errs: []error{
 				nil,
 				nil,
@@ -109,8 +106,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler before should throttle before threshold": {
+			tms: 6,
 			thr: NewThrottlerBefore(3),
-			ctx: context.Background(),
 			errs: []error{
 				errors.New("throttler has not reached threshold yet"),
 				errors.New("throttler has not reached threshold yet"),
@@ -121,8 +118,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler chance should throttle on 1": {
+			tms: 3,
 			thr: NewThrottlerChance(1),
-			ctx: context.Background(),
 			errs: []error{
 				errors.New("throttler has reached chance threshold"),
 				errors.New("throttler has reached chance threshold"),
@@ -130,8 +127,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler chance should throttle on >1": {
+			tms: 3,
 			thr: NewThrottlerChance(10.10),
-			ctx: context.Background(),
 			errs: []error{
 				errors.New("throttler has reached chance threshold"),
 				errors.New("throttler has reached chance threshold"),
@@ -139,17 +136,12 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler chance should not throttle on 0": {
+			tms: 3,
 			thr: NewThrottlerChance(0),
-			ctx: context.Background(),
-			errs: []error{
-				nil,
-				nil,
-				nil,
-			},
 		},
 		"Throttler after should throttle after threshold": {
+			tms: 6,
 			thr: NewThrottlerAfter(3),
-			ctx: context.Background(),
 			errs: []error{
 				nil,
 				nil,
@@ -160,8 +152,8 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler running should throttle on threshold": {
+			tms: 3,
 			thr: NewThrottlerRunning(1),
-			ctx: context.Background(),
 			act: once(time.Millisecond, nope),
 			errs: []error{
 				nil,
@@ -170,14 +162,19 @@ func TestThrottlerPattern(t *testing.T) {
 			},
 		},
 		"Throttler buffered should throttle on threshold": {
+			tms: 3,
 			thr: NewThrottlerBuffered(1),
-			ctx: context.Background(),
 			act: once(time.Millisecond, nope),
-			errs: []error{
-				nil,
-				nil,
-				nil,
+			durs: []time.Duration{
+				0,
+				time.Millisecond,
+				time.Millisecond,
 			},
+		},
+		"Throttler priority should throttle on threshold": {
+			tms: 3,
+			thr: NewThrottlerPriority(1, 0),
+			act: once(time.Millisecond, nope),
 			durs: []time.Duration{
 				0,
 				time.Millisecond,
@@ -188,7 +185,7 @@ func TestThrottlerPattern(t *testing.T) {
 	for tname, tcase := range table {
 		t.Run(tname, func(t *testing.T) {
 			var index int64
-			for i := range tcase.errs {
+			for i := 0; i < int(tcase.tms); i++ {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
 					t.Parallel()
 					index := int(atomic.AddInt64(&index, 1) - 1)
