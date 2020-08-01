@@ -66,7 +66,7 @@ func (gen *generator) tvisitPriority(ctx context.Context, thr *tpriority) {
 }
 
 func (gen *generator) tvisitTimed(ctx context.Context, thr *ttimed) {
-	gen.thr = NewThrottlerTimed(ctx, thr.threshold, thr.interval, thr.slide)
+	gen.thr = NewThrottlerTimed(thr.threshold, thr.interval, thr.quantum)
 }
 
 func (gen *generator) tvisitMonitor(ctx context.Context, thr *tmonitor) {
@@ -88,10 +88,9 @@ func (gen *generator) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 func (gen *generator) tvisitAdaptive(ctx context.Context, thr *tadaptive) {
 	gen = NewGenerator(thr.thr)
 	gen.thr = NewThrottlerAdaptive(
-		ctx,
 		thr.threshold,
 		thr.interval,
-		thr.slide,
+		thr.quantum,
 		thr.step,
 		gen.Generate(ctx, nil),
 	)
