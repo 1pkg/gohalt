@@ -2,6 +2,7 @@ package gohalt
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -24,7 +25,7 @@ func loop(period time.Duration, run Runnable) Runnable {
 	}
 }
 
-func once(after time.Duration, run Runnable) Runnable {
+func delayed(after time.Duration, run Runnable) Runnable {
 	return func(ctx context.Context) error {
 		time.Sleep(after)
 		return run(ctx)
@@ -46,7 +47,17 @@ func cached(cache time.Duration, run Runnable) Runnable {
 	}
 }
 
-func exec(ctx context.Context, r Runnable) {
+func once(run Runnable) Runnable {
+	var once sync.Once
+	return func(ctx context.Context) (err error) {
+		once.Do(func() {
+			err = run(ctx)
+		})
+		return err
+	}
+}
+
+func gorun(ctx context.Context, r Runnable) {
 	go func() {
 		_ = r(ctx)
 	}()

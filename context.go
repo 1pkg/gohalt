@@ -31,15 +31,12 @@ func WithParams(
 }
 
 func WithPriority(ctx context.Context, priority uint8) context.Context {
-	if priority == 0 {
-		priority = 1
-	}
 	return context.WithValue(ctx, ghctxpriority, priority)
 }
 
 func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	if val := ctx.Value(ghctxpriority); val != nil {
-		if priority, ok := val.(uint8); ok && priority <= limit {
+		if priority, ok := val.(uint8); ok && priority > 0 && priority <= limit {
 			return priority
 		}
 	}
@@ -104,7 +101,7 @@ func (ctx ctxthr) Done() <-chan struct{} {
 		close(ch)
 		return ch
 	}
-	exec(ctx, loop(ctx.freq, func(ctx context.Context) error {
+	gorun(ctx, loop(ctx.freq, func(ctx context.Context) error {
 		err := ctx.Err()
 		if err != nil {
 			close(ch)

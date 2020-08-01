@@ -272,9 +272,7 @@ func NewThrottlerPriority(threshold uint64, levels uint8) tpriority {
 		slots := uint64(math.Round(float64(i) * koef))
 		running.Store(i, make(chan struct{}, slots))
 	}
-	thr := tpriority{threshold: threshold, levels: levels}
-	thr.running = running
-	return thr
+	return tpriority{running: running, threshold: threshold, levels: levels}
 }
 
 func (thr tpriority) accept(ctx context.Context, v tvisitor) {
@@ -303,25 +301,28 @@ func (thr tpriority) Release(ctx context.Context) error {
 
 type ttimed struct {
 	*tafter
+	loop     Runnable
 	interval time.Duration
-	slide    time.Duration
+	quantum  time.Duration
 }
 
-func NewThrottlerTimed(ctx context.Context, threshold uint64, interval time.Duration, slide time.Duration) ttimed {
+func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) ttimed {
 	thr := NewThrottlerAfter(threshold)
 	delta, window := threshold, interval
-	if slide > 0 && interval > slide {
-		delta = uint64(math.Ceil(float64(delta) / float64(slide)))
-		window /= slide
+	if quantum > 0 && interval > quantum {
+		delta = uint64(math.Ceil(float64(delta) / float64(quantum)))
+		window /= quantum
 	}
-	exec(ctx, loop(window, func(ctx context.Context) error {
-		atomic.AddUint64(&thr.current, ^(delta - 1))
-		if current := atomic.LoadUint64(&thr.current); current >= ^uint64(0) {
-			atomic.StoreUint64(&thr.current, 0)
-		}
-		return ctx.Err()
-	}))
-	return ttimed{tafter: thr, interval: interval, slide: slide}
+	loop := once(
+		loop(window, func(ctx context.Context) error {
+			if current := atomic.AddUint64(&thr.current, ^(delta - 1)); int64(current) < 0 {
+				// fix running discrepancies
+				atomic.StoreUint64(&thr.current, 0)
+			}
+			return ctx.Err()
+		}),
+	)
+	return ttimed{tafter: thr, loop: loop, interval: interval, quantum: quantum}
 }
 
 func (thr ttimed) accept(ctx context.Context, v tvisitor) {
@@ -329,6 +330,8 @@ func (thr ttimed) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr ttimed) Acquire(ctx context.Context) error {
+	// start loop on first acquire
+	gorun(ctx, thr.loop)
 	return thr.tafter.Acquire(ctx)
 }
 
@@ -417,7 +420,7 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
 		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
 		atomic.StoreUint64(&thr.latency, latency)
-		exec(ctx, once(thr.retention, func(context.Context) error {
+		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
 			return nil
 		}))
@@ -452,7 +455,7 @@ func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
 	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
-		exec(ctx, once(thr.retention, func(context.Context) error {
+		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
 			return nil
 		}))
@@ -474,15 +477,14 @@ type tadaptive struct {
 }
 
 func NewThrottlerAdaptive(
-	ctx context.Context,
 	limit uint64,
 	interval time.Duration,
-	slide time.Duration,
+	quantum time.Duration,
 	step uint64,
 	thr Throttler,
 ) *tadaptive {
 	return &tadaptive{
-		ttimed: NewThrottlerTimed(ctx, limit, interval, slide),
+		ttimed: NewThrottlerTimed(limit, interval, quantum),
 		step:   step,
 		thr:    thr,
 	}
