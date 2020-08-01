@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	ms0_9 time.Duration = time.Duration(0.9 * float64(time.Millisecond))
+	ms1_0 time.Duration = time.Millisecond
+	ms1_5 time.Duration = time.Duration(1.5 * float64(time.Millisecond))
+	ms2_0 time.Duration = 2 * time.Millisecond
+)
+
 type tcase struct {
 	tms  uint64
 	thr  Throttler
@@ -19,9 +26,10 @@ type tcase struct {
 	ctxs []context.Context
 	errs []error
 	durs []time.Duration
+	idx  int64
 }
 
-func (t tcase) run(index int) (err error, dur time.Duration) {
+func (t *tcase) run(index int) (err error, dur time.Duration) {
 	// get context with fallback
 	ctx := context.Background()
 	if index < len(t.ctxs) {
@@ -33,15 +41,22 @@ func (t tcase) run(index int) (err error, dur time.Duration) {
 			_ = pre(ctx)
 		}
 	}
-	ts := time.Now()
+	var ts time.Time
 	// try catch panic into error
 	func() {
 		defer func() {
 			if msg := recover(); msg != nil {
+				atomic.AddInt64(&t.idx, 1)
 				err = errors.New(msg.(string))
 			}
 		}()
+		ts = time.Now()
+		// force strict acquire order
+		for index != int(atomic.LoadInt64(&t.idx)) {
+			time.Sleep(time.Microsecond)
+		}
 		err = t.thr.Acquire(ctx)
+		atomic.AddInt64(&t.idx, 1)
 	}()
 	dur = time.Since(ts)
 	// run additional action only if present
@@ -57,7 +72,7 @@ func (t tcase) run(index int) (err error, dur time.Duration) {
 	return
 }
 
-func (t tcase) result(index int) (err error, dur time.Duration) {
+func (t *tcase) result(index int) (err error, dur time.Duration) {
 	if index < len(t.errs) {
 		err = t.errs[index]
 	}
@@ -84,11 +99,11 @@ func TestThrottlerPattern(t *testing.T) {
 		},
 		"Throttler wait should sleep for millisecond": {
 			tms: 3,
-			thr: NewThrottlerWait(time.Millisecond),
+			thr: NewThrottlerWait(ms1_0),
 			durs: []time.Duration{
-				time.Millisecond,
-				time.Millisecond,
-				time.Millisecond,
+				ms0_9,
+				ms0_9,
+				ms0_9,
 			},
 		},
 		"Throttler panic should panic": {
@@ -161,7 +176,7 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler running should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
-			act: delayed(time.Millisecond, nope),
+			act: delayed(ms1_0, nope),
 			errs: []error{
 				nil,
 				errors.New("throttler has exceed running threshold"),
@@ -171,27 +186,27 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler buffered should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerBuffered(1),
-			act: delayed(time.Millisecond, nope),
+			act: delayed(ms1_0, nope),
 			durs: []time.Duration{
 				0,
-				time.Millisecond,
-				time.Millisecond,
+				ms0_9,
+				ms0_9,
 			},
 		},
 		"Throttler priority should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerPriority(1, 0),
-			act: delayed(time.Millisecond, nope),
+			act: delayed(ms1_0, nope),
 			durs: []time.Duration{
 				0,
-				time.Millisecond,
-				time.Millisecond,
+				ms0_9,
+				ms0_9,
 			},
 		},
 		"Throttler priority should not throttle on priority": {
 			tms: 7,
 			thr: NewThrottlerPriority(5, 2),
-			act: delayed(time.Millisecond, nope),
+			act: delayed(ms1_0, nope),
 			ctxs: []context.Context{
 				WithPriority(context.Background(), 1),
 				WithPriority(context.Background(), 1),
@@ -204,28 +219,28 @@ func TestThrottlerPattern(t *testing.T) {
 			durs: []time.Duration{
 				0,
 				0,
-				time.Millisecond,
+				ms0_9,
 				0,
 				0,
 				0,
-				time.Millisecond,
+				ms0_9,
 			},
 		},
 		"Throttler timed should throttle after threshold": {
 			tms: 6,
 			thr: NewThrottlerTimed(
 				2,
-				time.Millisecond,
+				ms1_0,
 				0,
 			),
-			act: delayed(time.Millisecond, nope),
+			act: delayed(ms1_0, nope),
 			pres: []Runnable{
 				nil,
 				nil,
 				nil,
 				nil,
-				delayed(2*time.Millisecond, nope),
-				delayed(2*time.Millisecond, nope),
+				delayed(ms2_0, nope),
+				delayed(ms2_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -236,31 +251,31 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 			},
 		},
-		// "Throttler timed should throttle after threshold with quantum": {
-		// 	tms: 6,
-		// 	thr: NewThrottlerTimed(
-		// 		context.Background(),
-		// 		2,
-		// 		2*time.Millisecond,
-		// 		time.Millisecond,
-		// 	),
-		// 	pres: []Runnable{
-		// 		nil,
-		// 		nil,
-		// 		nil,
-		// 		once(time.Millisecond, nope),
-		// 		once(time.Millisecond, nope),
-		// 		once(2*time.Millisecond, nope),
-		// 	},
-		// 	errs: []error{
-		// 		nil,
-		// 		nil,
-		// 		errors.New("throttler has exceed threshold"),
-		// 		nil,
-		// 		errors.New("throttler has exceed threshold"),
-		// 		errors.New("throttler has exceed threshold"),
-		// 	},
-		// },
+		"Throttler timed should throttle after threshold with quantum": {
+			tms: 6,
+			thr: NewThrottlerTimed(
+				2,
+				ms2_0,
+				ms1_0,
+			),
+			act: delayed(ms1_0, nope),
+			pres: []Runnable{
+				nil,
+				nil,
+				nil,
+				delayed(ms1_5, nope),
+				nil,
+				delayed(ms2_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				errors.New("throttler has exceed threshold"),
+				nil,
+				errors.New("throttler has exceed threshold"),
+				nil,
+			},
+		},
 		"Throttler monitor should throttle with error on internal error": {
 			tms: 3,
 			thr: NewThrottlerMonitor(
@@ -351,12 +366,11 @@ func TestThrottlerPattern(t *testing.T) {
 			for i := 0; i < int(tcase.tms); i++ {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
 					t.Parallel()
-					fmt.Println("run ", atomic.LoadInt64(&index))
 					index := int(atomic.AddInt64(&index, 1) - 1)
 					resErr, resDur := tcase.result(index)
 					err, dur := tcase.run(index)
 					assert.Equal(t, resErr, err)
-					assert.LessOrEqual(t, int64(resDur), int64(dur))
+					assert.LessOrEqual(t, int64(resDur/2), int64(dur))
 				})
 			}
 		})

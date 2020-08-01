@@ -310,8 +310,8 @@ func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Du
 	thr := NewThrottlerAfter(threshold)
 	delta, window := threshold, interval
 	if quantum > 0 && interval > quantum {
-		delta = uint64(math.Ceil(float64(delta) / float64(quantum)))
-		window /= quantum
+		delta = uint64(math.Ceil(float64(threshold) / (float64(interval) / float64(quantum))))
+		window = quantum
 	}
 	loop := once(
 		loop(window, func(ctx context.Context) error {
@@ -332,7 +332,12 @@ func (thr ttimed) accept(ctx context.Context, v tvisitor) {
 func (thr ttimed) Acquire(ctx context.Context) error {
 	// start loop on first acquire
 	gorun(ctx, thr.loop)
-	return thr.tafter.Acquire(ctx)
+	err := thr.tafter.Acquire(ctx)
+	if current := atomic.LoadUint64(&thr.current); current > thr.threshold {
+		// fix running discrepancies
+		atomic.StoreUint64(&thr.current, thr.threshold)
+	}
+	return err
 }
 
 func (thr ttimed) Release(ctx context.Context) error {
