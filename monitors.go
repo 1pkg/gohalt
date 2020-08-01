@@ -20,13 +20,13 @@ type Stats struct {
 	CPUUsage  float64
 }
 
-type monitor struct {
+type mntsys struct {
 	memsync Runnable
 	stats   Stats
 }
 
-func NewMonitor(cache time.Duration) *monitor {
-	mnt := &monitor{}
+func NewMonitorSystem(cache time.Duration) *mntsys {
+	mnt := &mntsys{}
 	var lock sync.Mutex
 	mnt.memsync = cached(cache, func(ctx context.Context) error {
 		lock.Lock()
@@ -36,14 +36,14 @@ func NewMonitor(cache time.Duration) *monitor {
 	return mnt
 }
 
-func (mnt *monitor) Stats(ctx context.Context) (Stats, error) {
+func (mnt *mntsys) Stats(ctx context.Context) (Stats, error) {
 	if err := mnt.memsync(ctx); err != nil {
 		return mnt.stats, err
 	}
 	return mnt.stats, nil
 }
 
-func (mnt *monitor) sync(context.Context) error {
+func (mnt *mntsys) sync(context.Context) error {
 	var memstats runtime.MemStats
 	runtime.ReadMemStats(&memstats)
 	mnt.stats.MEMAlloc = memstats.Alloc
@@ -59,4 +59,13 @@ func (mnt *monitor) sync(context.Context) error {
 		mnt.stats.CPUUsage /= float64(len(percents))
 	}
 	return nil
+}
+
+type mntmock struct {
+	stats Stats
+	err   error
+}
+
+func (mnt mntmock) Stats(context.Context) (Stats, error) {
+	return mnt.stats, mnt.err
 }
