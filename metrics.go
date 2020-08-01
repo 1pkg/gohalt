@@ -20,7 +20,7 @@ type mtcprometheus struct {
 	value   bool
 }
 
-func NewMetricPrometheusCached(url string, query string, cache time.Duration, mstep time.Duration) *mtcprometheus {
+func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) *mtcprometheus {
 	mtc := &mtcprometheus{}
 	var lock sync.Mutex
 	var api prometheus.API
@@ -78,4 +78,13 @@ func (mtc *mtcprometheus) pull(
 	}
 	mtc.value = scalar.Value == 1
 	return err
+}
+
+type mtcmock struct {
+	metric bool
+	err    error
+}
+
+func (mtc mtcmock) Query(context.Context) (bool, error) {
+	return mtc.metric, mtc.err
 }

@@ -96,7 +96,7 @@ func (thr tpanic) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tpanic) Acquire(context.Context) error {
-	panic("throttler panic has happened")
+	panic("throttler has reached panic")
 }
 
 func (thr tpanic) Release(context.Context) error {
@@ -160,8 +160,6 @@ func NewThrottlerChance(threshold float64) tchance {
 	if threshold > 1.0 {
 		threshold = 1.0
 	}
-	// reseed rand on each new call
-	rand.Seed(time.Now().UnixNano())
 	return tchance{threshold: threshold}
 }
 
@@ -236,8 +234,8 @@ type tbuffered struct {
 	running chan struct{}
 }
 
-func NewThrottlerBuffered(capacity uint64) *tbuffered {
-	return &tbuffered{running: make(chan struct{}, capacity)}
+func NewThrottlerBuffered(threshold uint64) *tbuffered {
+	return &tbuffered{running: make(chan struct{}, threshold)}
 }
 
 func (thr *tbuffered) accept(ctx context.Context, v tvisitor) {
@@ -259,22 +257,22 @@ func (thr *tbuffered) Release(ctx context.Context) error {
 }
 
 type tpriority struct {
-	running  *sync.Map
-	capacity uint64
-	limit    uint8
+	running   *sync.Map
+	threshold uint64
+	levels    uint8
 }
 
-func NewThrottlerPriority(capacity uint64, limit uint8) tpriority {
-	if limit == 0 {
-		limit = 1
+func NewThrottlerPriority(threshold uint64, levels uint8) tpriority {
+	if levels == 0 {
+		levels = 1
 	}
 	running := &sync.Map{}
-	sum := float64(limit) / 2 * float64((2 + (limit - 1)))
-	koef := uint64(math.Ceil(float64(capacity) / sum))
-	for i := uint8(1); i <= limit; i++ {
-		running.Store(i, make(chan struct{}, uint64(i)*koef))
+	koef := float64(threshold) / (float64(levels) / 2 * float64((2 + (levels - 1))))
+	for i := uint8(1); i <= levels; i++ {
+		slots := uint64(math.Round(float64(i) * koef))
+		running.Store(i, make(chan struct{}, slots))
 	}
-	thr := tpriority{capacity: capacity, limit: limit}
+	thr := tpriority{threshold: threshold, levels: levels}
 	thr.running = running
 	return thr
 }
@@ -284,7 +282,7 @@ func (thr tpriority) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tpriority) Acquire(ctx context.Context) error {
-	priority := ctxPriority(ctx, thr.limit)
+	priority := ctxPriority(ctx, thr.levels)
 	val, _ := thr.running.Load(priority)
 	running := val.(chan struct{})
 	running <- struct{}{}
@@ -292,7 +290,7 @@ func (thr tpriority) Acquire(ctx context.Context) error {
 }
 
 func (thr tpriority) Release(ctx context.Context) error {
-	priority := ctxPriority(ctx, thr.limit)
+	priority := ctxPriority(ctx, thr.levels)
 	val, _ := thr.running.Load(priority)
 	running := val.(chan struct{})
 	select {
@@ -339,12 +337,12 @@ func (thr ttimed) Release(ctx context.Context) error {
 }
 
 type tmonitor struct {
-	mnt   Monitor
-	limit Stats
+	mnt       Monitor
+	threshold Stats
 }
 
-func NewThrottlerMonitor(mnt Monitor, limit Stats) tmonitor {
-	return tmonitor{mnt: mnt, limit: limit}
+func NewThrottlerMonitor(mnt Monitor, threshold Stats) tmonitor {
+	return tmonitor{mnt: mnt, threshold: threshold}
 }
 
 func (thr tmonitor) accept(ctx context.Context, v tvisitor) {
@@ -356,9 +354,9 @@ func (thr tmonitor) Acquire(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("throttler hasn't found any stats %w", err)
 	}
-	if stats.MEMAlloc >= thr.limit.MEMAlloc || stats.MEMSystem >= thr.limit.MEMSystem ||
-		stats.CPUPause >= thr.limit.CPUPause || stats.CPUUsage >= thr.limit.CPUUsage {
-		return errors.New("throttler has exceed stats limits")
+	if stats.MEMAlloc >= thr.threshold.MEMAlloc || stats.MEMSystem >= thr.threshold.MEMSystem ||
+		stats.CPUPause >= thr.threshold.CPUPause || stats.CPUUsage >= thr.threshold.CPUUsage {
+		return errors.New("throttler has exceed stats threshold")
 	}
 	return nil
 }
@@ -385,7 +383,7 @@ func (thr tmetric) Acquire(ctx context.Context) error {
 		return fmt.Errorf("throttler hasn't found any metric %w", err)
 	}
 	if val {
-		return errors.New("throttler metric has been reached")
+		return errors.New("throttler has reached metric threshold")
 	}
 	return nil
 }
