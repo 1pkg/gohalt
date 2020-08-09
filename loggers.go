@@ -114,7 +114,7 @@ func (logb *logbuffer) tvisitLatency(ctx context.Context, thr *tlatency) {
 	logb.write("latency", fmt.Sprintf(
 		"%s of %s in %s",
 		time.Duration(thr.latency),
-		thr.limit,
+		thr.threshold,
 		thr.retention,
 	))
 }
@@ -123,7 +123,7 @@ func (logb *logbuffer) tvisitPercentile(ctx context.Context, thr *tpercentile) {
 	logb.write("percentile", fmt.Sprintf(
 		"%v of %s with %f in %s",
 		thr.latencies,
-		thr.limit,
+		thr.threshold,
 		thr.percentile,
 		thr.retention,
 	))
@@ -150,14 +150,14 @@ func (logb *logbuffer) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 	logb.write("enqueue", "")
 }
 
-func (logb *logbuffer) tvisitKeyed(ctx context.Context, thr *tkeyed) {
-	logb.write("keyed", "")
+func (logb *logbuffer) tvisitPattern(ctx context.Context, thr *tpattern) {
+	logb.write("pattern", "")
 	lprev := logb.lnext()
 	defer lprev()
-	thr.keys.Range(func(key interface{}, val interface{}) bool {
-		val.(Throttler).accept(ctx, logb)
-		return true
-	})
+	patterns := *thr
+	for _, pattern := range patterns {
+		pattern.Throttler.accept(ctx, logb)
+	}
 }
 
 func (logb *logbuffer) tvisitRing(ctx context.Context, thr *tring) {

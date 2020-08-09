@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,7 +39,7 @@ type tvisitor interface {
 	tvisitAdaptive(context.Context, *tadaptive)
 	tvisitContext(context.Context, *tcontext)
 	tvisitEnqueue(context.Context, *tenqueue)
-	tvisitKeyed(context.Context, *tkeyed)
+	tvisitPattern(context.Context, *tpattern)
 	tvisitRing(context.Context, *tring)
 	tvisitAll(context.Context, *tall)
 	tvisitAny(context.Context, *tany)
@@ -440,12 +441,12 @@ func (thr tmetric) Release(context.Context) error {
 
 type tlatency struct {
 	latency   uint64
-	limit     time.Duration
+	threshold time.Duration
 	retention time.Duration
 }
 
-func NewThrottlerLatency(limit time.Duration, retention time.Duration) *tlatency {
-	return &tlatency{limit: limit, retention: retention}
+func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
+	return &tlatency{threshold: threshold, retention: retention}
 }
 
 func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
@@ -453,15 +454,15 @@ func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr tlatency) Acquire(context.Context) error {
-	if latency := time.Duration(atomic.LoadUint64(&thr.latency)); latency > thr.limit {
+	if latency := time.Duration(atomic.LoadUint64(&thr.latency)); latency > thr.threshold {
 		return errors.New("throttler has exceed latency threshold")
 	}
 	return nil
 }
 
 func (thr *tlatency) Release(ctx context.Context) error {
-	if latency := atomic.LoadUint64(&thr.latency); latency < uint64(thr.limit) {
-		latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
+	latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
+	if latency > uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) < uint64(thr.threshold) {
 		atomic.StoreUint64(&thr.latency, latency)
 		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
@@ -473,19 +474,19 @@ func (thr *tlatency) Release(ctx context.Context) error {
 
 type tpercentile struct {
 	latencies  *blatheap
-	limit      time.Duration
+	threshold  time.Duration
 	percentile float64
 	retention  time.Duration
 }
 
-func NewThrottlerPercentile(limit time.Duration, percentile float64, retention time.Duration) *tpercentile {
+func NewThrottlerPercentile(threshold time.Duration, percentile float64, retention time.Duration) *tpercentile {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
 	}
 	return &tpercentile{
 		latencies:  &blatheap{},
-		limit:      limit,
+		threshold:  threshold,
 		percentile: percentile,
 		retention:  retention,
 	}
@@ -497,7 +498,7 @@ func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
 
 func (thr *tpercentile) Acquire(ctx context.Context) error {
 	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
-	if latency := time.Duration(thr.latencies.At(at)); latency > thr.limit {
+	if latency := time.Duration(thr.latencies.At(at)); latency > thr.threshold {
 		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
 			return nil
@@ -520,14 +521,14 @@ type tadaptive struct {
 }
 
 func NewThrottlerAdaptive(
-	limit uint64,
+	threshold uint64,
 	interval time.Duration,
 	quantum time.Duration,
 	step uint64,
 	thr Throttler,
 ) *tadaptive {
 	return &tadaptive{
-		ttimed: NewThrottlerTimed(limit, interval, quantum),
+		ttimed: NewThrottlerTimed(threshold, interval, quantum),
 		step:   step,
 		thr:    thr,
 	}
@@ -605,31 +606,38 @@ func (thr tenqueue) Release(ctx context.Context) error {
 	return nil
 }
 
-type tkeyed struct {
-	keys *sync.Map
-	gen  Generator
+type Pattern struct {
+	Pattern   *regexp.Regexp
+	Throttler Throttler
 }
 
-func NewThrottlerKeyed(gen Generator) tkeyed {
-	return tkeyed{keys: &sync.Map{}, gen: gen}
+type tpattern []Pattern
+
+func NewThrottlerPattern(patterns ...Pattern) tpattern {
+	return tpattern(patterns)
 }
 
-func (thr tkeyed) accept(ctx context.Context, v tvisitor) {
-	v.tvisitKeyed(ctx, &thr)
+func (thr tpattern) accept(ctx context.Context, v tvisitor) {
+	v.tvisitPattern(ctx, &thr)
 }
 
-func (thr tkeyed) Acquire(ctx context.Context) error {
+func (thr tpattern) Acquire(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
-		r, _ := thr.keys.LoadOrStore(key, thr.gen.Generate(ctx, key))
-		return r.(Throttler).Acquire(ctx)
+		for _, pattern := range thr {
+			if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
+				return pattern.Throttler.Acquire(ctx)
+			}
+		}
 	}
 	return errors.New("throttler hasn't found any key")
 }
 
-func (thr tkeyed) Release(ctx context.Context) error {
+func (thr tpattern) Release(ctx context.Context) error {
 	if key := ctxKey(ctx); key != nil {
-		if r, ok := thr.keys.Load(key); ok {
-			return r.(Throttler).Release(ctx)
+		for _, pattern := range thr {
+			if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
+				return pattern.Throttler.Release(ctx)
+			}
 		}
 	}
 	return nil

@@ -104,7 +104,21 @@ func (m *Meta) tvisitContext(ctx context.Context, thr *tcontext) {
 func (m *Meta) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 }
 
-func (m *Meta) tvisitKeyed(ctx context.Context, thr *tkeyed) {
+func (m *Meta) tvisitPattern(ctx context.Context, thr *tpattern) {
+	patterns := *thr
+	for _, pattern := range patterns {
+		tm := DefaultMeta
+		pattern.Throttler.accept(ctx, &tm)
+		if tm.Limit < m.Limit {
+			m.Limit = tm.Limit
+		}
+		if tm.Remaining < m.Remaining {
+			m.Remaining = tm.Remaining
+		}
+		if tm.Reset > m.Reset {
+			m.Reset = tm.Reset
+		}
+	}
 }
 
 func (m *Meta) tvisitRing(ctx context.Context, thr *tring) {
