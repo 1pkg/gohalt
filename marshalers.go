@@ -25,6 +25,10 @@ func (mobj *mobject) tvisitEcho(ctx context.Context, thr *techo) {
 func (mobj *mobject) tvisitWait(ctx context.Context, thr *twait) {
 }
 
+func (mobj *mobject) tvisitBackoff(ctx context.Context, thr *tbackoff) {
+	mobj.obj = thr.current
+}
+
 func (mobj *mobject) tvisitPanic(ctx context.Context, thr *tpanic) {
 }
 
