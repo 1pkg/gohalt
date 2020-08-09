@@ -39,6 +39,7 @@ type tvisitor interface {
 	tvisitContext(context.Context, *tcontext)
 	tvisitEnqueue(context.Context, *tenqueue)
 	tvisitKeyed(context.Context, *tkeyed)
+	tvisitRing(context.Context, *tring)
 	tvisitAll(context.Context, *tall)
 	tvisitAny(context.Context, *tany)
 	tvisitNot(context.Context, *tnot)
@@ -90,12 +91,14 @@ type tbackoff struct {
 	duration time.Duration
 	limit    time.Duration
 	current  uint64
+	reset    bool
 }
 
-func NewThrottlerBackoff(duration time.Duration, limit time.Duration) *tbackoff {
+func NewThrottlerBackoff(duration time.Duration, limit time.Duration, reset bool) *tbackoff {
 	return &tbackoff{
 		duration: duration,
 		limit:    limit,
+		reset:    reset,
 	}
 }
 
@@ -105,12 +108,14 @@ func (thr *tbackoff) accept(ctx context.Context, v tvisitor) {
 
 func (thr *tbackoff) Acquire(context.Context) error {
 	current := atomic.LoadUint64(&thr.current) + 1
-	duration := thr.duration * time.Duration(current)
+	duration := thr.duration * time.Duration(current*current)
 	if duration > thr.limit {
 		duration = thr.limit
+		if thr.reset {
+			atomic.StoreUint64(&thr.current, 0)
+		}
 	}
 	time.Sleep(duration)
-	atomic.StoreUint64(&thr.current, current*current)
 	return nil
 }
 
@@ -628,6 +633,32 @@ func (thr tkeyed) Release(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+type tring struct {
+	thrs    []Throttler
+	acquire uint64
+	release uint64
+}
+
+func NewThrottlerRing(thrs ...Throttler) *tring {
+	return &tring{thrs: thrs}
+}
+
+func (thr *tring) accept(ctx context.Context, v tvisitor) {
+	v.tvisitRing(ctx, thr)
+}
+
+func (thr *tring) Acquire(ctx context.Context) error {
+	acquire := atomic.AddUint64(&thr.acquire, 1)
+	index := int(acquire) % len(thr.thrs)
+	return thr.thrs[index].Acquire(ctx)
+}
+
+func (thr *tring) Release(ctx context.Context) error {
+	release := atomic.AddUint64(&thr.release, 1)
+	index := int(release) % len(thr.thrs)
+	return thr.thrs[index].Release(ctx)
 }
 
 type tall []Throttler

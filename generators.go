@@ -34,7 +34,7 @@ func (gen *generator) tvisitWait(ctx context.Context, thr *twait) {
 }
 
 func (gen *generator) tvisitBackoff(ctx context.Context, thr *tbackoff) {
-	gen.thr = NewThrottlerBackoff(thr.duration, thr.limit)
+	gen.thr = NewThrottlerBackoff(thr.duration, thr.limit, thr.reset)
 }
 
 func (gen *generator) tvisitPanic(ctx context.Context, thr *tpanic) {
@@ -110,6 +110,15 @@ func (gen *generator) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 
 func (gen *generator) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 	gen.thr = NewThrottlerKeyed(thr.gen)
+}
+
+func (gen *generator) tvisitRing(ctx context.Context, thr *tring) {
+	genthrs := make([]Throttler, 0, len(thr.thrs))
+	for _, thr := range thr.thrs {
+		gen := NewGenerator(thr)
+		genthrs = append(genthrs, gen.Generate(ctx, nil))
+	}
+	gen.thr = NewThrottlerRing(genthrs...)
 }
 
 func (gen *generator) tvisitAll(ctx context.Context, thr *tall) {
