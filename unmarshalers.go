@@ -89,7 +89,13 @@ func (umobj umobject) tvisitContext(ctx context.Context, thr *tcontext) {
 func (umobj umobject) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 }
 
-func (umobj umobject) tvisitKeyed(ctx context.Context, thr *tkeyed) {
+func (umobj umobject) tvisitPattern(ctx context.Context, thr *tpattern) {
+	patterns := *thr
+	objs := umobj.obj.([]interface{})
+	for i := range patterns {
+		tobj := umobject{obj: objs[i]}
+		patterns[i].Throttler.accept(ctx, tobj)
+	}
 }
 
 func (umobj umobject) tvisitRing(ctx context.Context, thr *tring) {

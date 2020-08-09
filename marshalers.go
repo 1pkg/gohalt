@@ -87,7 +87,15 @@ func (mobj *mobject) tvisitContext(ctx context.Context, thr *tcontext) {
 func (mobj *mobject) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 }
 
-func (mobj *mobject) tvisitKeyed(ctx context.Context, thr *tkeyed) {
+func (mobj *mobject) tvisitPattern(ctx context.Context, thr *tpattern) {
+	patterns := *thr
+	tobjs := make([]interface{}, 0, len(patterns))
+	for _, pattern := range patterns {
+		var tobj mobject
+		pattern.Throttler.accept(ctx, &tobj)
+		tobjs = append(tobjs, tobj.obj)
+	}
+	mobj.obj = tobjs
 }
 
 func (mobj *mobject) tvisitRing(ctx context.Context, thr *tring) {
