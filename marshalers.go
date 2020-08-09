@@ -90,6 +90,20 @@ func (mobj *mobject) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 func (mobj *mobject) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 }
 
+func (mobj *mobject) tvisitRing(ctx context.Context, thr *tring) {
+	tobjs := make([]interface{}, 0, len(thr.thrs))
+	for _, thr := range thr.thrs {
+		var tobj mobject
+		thr.accept(ctx, &tobj)
+		tobjs = append(tobjs, tobj.obj)
+	}
+	mobj.obj = []interface{}{
+		tobjs,
+		thr.acquire,
+		thr.release,
+	}
+}
+
 func (mobj *mobject) tvisitAll(ctx context.Context, thr *tall) {
 	thrs := *thr
 	tobjs := make([]interface{}, 0, len(thrs))

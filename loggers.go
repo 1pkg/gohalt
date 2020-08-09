@@ -160,6 +160,15 @@ func (logb *logbuffer) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 	})
 }
 
+func (logb *logbuffer) tvisitRing(ctx context.Context, thr *tring) {
+	logb.write("ring", fmt.Sprintf("%d", len(thr.thrs)))
+	lprev := logb.lnext()
+	defer lprev()
+	for _, thr := range thr.thrs {
+		thr.accept(ctx, logb)
+	}
+}
+
 func (logb *logbuffer) tvisitAll(ctx context.Context, thr *tall) {
 	thrs := *thr
 	logb.write("all", fmt.Sprintf("%d", len(thrs)))

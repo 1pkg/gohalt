@@ -92,6 +92,16 @@ func (umobj umobject) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 func (umobj umobject) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 }
 
+func (umobj umobject) tvisitRing(ctx context.Context, thr *tring) {
+	objs := umobj.obj.([]interface{})[0].([]interface{})
+	for i := range thr.thrs {
+		tobj := umobject{obj: objs[i]}
+		thr.thrs[i].accept(ctx, tobj)
+	}
+	thr.acquire = uint64(umobj.obj.([]interface{})[1].(float64))
+	thr.release = uint64(umobj.obj.([]interface{})[2].(float64))
+}
+
 func (umobj umobject) tvisitAll(ctx context.Context, thr *tall) {
 	thrs := *thr
 	objs := umobj.obj.([]interface{})

@@ -107,6 +107,22 @@ func (m *Meta) tvisitEnqueue(ctx context.Context, thr *tenqueue) {
 func (m *Meta) tvisitKeyed(ctx context.Context, thr *tkeyed) {
 }
 
+func (m *Meta) tvisitRing(ctx context.Context, thr *tring) {
+	for _, thr := range thr.thrs {
+		tm := DefaultMeta
+		thr.accept(ctx, &tm)
+		if tm.Limit < m.Limit {
+			m.Limit = tm.Limit
+		}
+		if tm.Remaining < m.Remaining {
+			m.Remaining = tm.Remaining
+		}
+		if tm.Reset > m.Reset {
+			m.Reset = tm.Reset
+		}
+	}
+}
+
 func (m *Meta) tvisitAll(ctx context.Context, thr *tall) {
 	thrs := *thr
 	for _, thr := range thrs {
