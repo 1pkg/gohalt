@@ -33,6 +33,10 @@ func (gen *generator) tvisitWait(ctx context.Context, thr *twait) {
 	gen.thr = NewThrottlerWait(thr.duration)
 }
 
+func (gen *generator) tvisitBackoff(ctx context.Context, thr *tbackoff) {
+	gen.thr = NewThrottlerBackoff(thr.duration, thr.limit)
+}
+
 func (gen *generator) tvisitPanic(ctx context.Context, thr *tpanic) {
 	gen.thr = NewThrottlerPanic()
 }

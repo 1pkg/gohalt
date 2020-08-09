@@ -42,6 +42,9 @@ func (m *Meta) tvisitEcho(ctx context.Context, thr *techo) {
 func (m *Meta) tvisitWait(ctx context.Context, thr *twait) {
 }
 
+func (m *Meta) tvisitBackoff(ctx context.Context, thr *tbackoff) {
+}
+
 func (m *Meta) tvisitPanic(ctx context.Context, thr *tpanic) {
 	m.Limit = 0
 	m.Remaining = 0

@@ -21,6 +21,7 @@ type Throttler interface {
 type tvisitor interface {
 	tvisitEcho(context.Context, *techo)
 	tvisitWait(context.Context, *twait)
+	tvisitBackoff(context.Context, *tbackoff)
 	tvisitPanic(context.Context, *tpanic)
 	tvisitEach(context.Context, *teach)
 	tvisitBefore(context.Context, *tbefore)
@@ -82,6 +83,38 @@ func (thr twait) Acquire(context.Context) error {
 }
 
 func (thr twait) Release(context.Context) error {
+	return nil
+}
+
+type tbackoff struct {
+	duration time.Duration
+	limit    time.Duration
+	current  uint64
+}
+
+func NewThrottlerBackoff(duration time.Duration, limit time.Duration) *tbackoff {
+	return &tbackoff{
+		duration: duration,
+		limit:    limit,
+	}
+}
+
+func (thr *tbackoff) accept(ctx context.Context, v tvisitor) {
+	v.tvisitBackoff(ctx, thr)
+}
+
+func (thr *tbackoff) Acquire(context.Context) error {
+	current := atomic.LoadUint64(&thr.current) + 1
+	duration := thr.duration * time.Duration(current)
+	if duration > thr.limit {
+		duration = thr.limit
+	}
+	time.Sleep(duration)
+	atomic.StoreUint64(&thr.current, current*current)
+	return nil
+}
+
+func (thr *tbackoff) Release(context.Context) error {
 	return nil
 }
 

@@ -62,6 +62,10 @@ func (logb *logbuffer) tvisitWait(ctx context.Context, thr *twait) {
 	logb.write("wait", thr.duration.String())
 }
 
+func (logb *logbuffer) tvisitBackoff(ctx context.Context, thr *tbackoff) {
+	logb.write("backoff", fmt.Sprintf("%d of %d", thr.duration*time.Duration(thr.current), thr.limit))
+}
+
 func (logb *logbuffer) tvisitPanic(ctx context.Context, thr *tpanic) {
 	logb.write("panic", "")
 }

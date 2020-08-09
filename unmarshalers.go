@@ -28,6 +28,10 @@ func (umobj umobject) tvisitEcho(ctx context.Context, thr *techo) {
 func (umobj umobject) tvisitWait(ctx context.Context, thr *twait) {
 }
 
+func (umobj umobject) tvisitBackoff(ctx context.Context, thr *tbackoff) {
+	thr.current = uint64(umobj.obj.(float64))
+}
+
 func (umobj umobject) tvisitPanic(ctx context.Context, thr *tpanic) {
 }
 
