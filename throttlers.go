@@ -108,7 +108,7 @@ func (thr *tbackoff) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tbackoff) Acquire(context.Context) error {
-	current := atomic.LoadUint64(&thr.current) + 1
+	current := atomic.AddUint64(&thr.current, 1)
 	duration := thr.duration * time.Duration(current*current)
 	if duration > thr.limit {
 		duration = thr.limit
