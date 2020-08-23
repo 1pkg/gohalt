@@ -461,8 +461,8 @@ func (thr *tlatency) Acquire(context.Context) error {
 }
 
 func (thr *tlatency) Release(ctx context.Context) error {
-	latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
-	if latency > uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
+	latency := uint64(time.Now().UTC().UnixNano() - ctxTimestamp(ctx))
+	if latency >= uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
 		atomic.StoreUint64(&thr.latency, latency)
 		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
@@ -479,12 +479,12 @@ type tpercentile struct {
 	retention  time.Duration
 }
 
-func NewThrottlerPercentile(threshold time.Duration, percentile float64, retention time.Duration) *tpercentile {
+func NewThrottlerPercentile(threshold time.Duration, percentile float64, retention time.Duration) tpercentile {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
 	}
-	return &tpercentile{
+	return tpercentile{
 		latencies:  &blatheap{},
 		threshold:  threshold,
 		percentile: percentile,
@@ -492,24 +492,26 @@ func NewThrottlerPercentile(threshold time.Duration, percentile float64, retenti
 	}
 }
 
-func (thr *tpercentile) accept(ctx context.Context, v tvisitor) {
-	v.tvisitPercentile(ctx, thr)
+func (thr tpercentile) accept(ctx context.Context, v tvisitor) {
+	v.tvisitPercentile(ctx, &thr)
 }
 
-func (thr *tpercentile) Acquire(ctx context.Context) error {
-	at := int(math.Round(float64(thr.latencies.Len()) * thr.percentile))
-	if latency := time.Duration(thr.latencies.At(at)); latency > thr.threshold {
-		gorun(ctx, delayed(thr.retention, func(context.Context) error {
-			thr.latencies.Prune()
-			return nil
-		}))
-		return errors.New("throttler has exceed latency threshold")
+func (thr tpercentile) Acquire(ctx context.Context) error {
+	if length := thr.latencies.Len(); length > 0 {
+		at := int(math.Round(float64(length-1) * thr.percentile))
+		if latency := thr.latencies.At(at); latency >= uint64(thr.threshold) {
+			gorun(ctx, delayed(thr.retention, func(context.Context) error {
+				thr.latencies.Prune()
+				return nil
+			}))
+			return errors.New("throttler has exceed latency threshold")
+		}
 	}
 	return nil
 }
 
-func (thr *tpercentile) Release(ctx context.Context) error {
-	latency := ctxTimestamp(ctx) - time.Now().UTC().UnixNano()
+func (thr tpercentile) Release(ctx context.Context) error {
+	latency := uint64(time.Now().UTC().UnixNano() - ctxTimestamp(ctx))
 	heap.Push(thr.latencies, latency)
 	return nil
 }

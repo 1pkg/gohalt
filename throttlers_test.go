@@ -16,6 +16,8 @@ const (
 	ms1_0 time.Duration = time.Millisecond
 	ms1_5 time.Duration = time.Duration(1.5 * float64(time.Millisecond))
 	ms2_0 time.Duration = 2 * time.Millisecond
+	ms3_0 time.Duration = 3 * time.Millisecond
+	ms5_0 time.Duration = 5 * time.Millisecond
 )
 
 type tcase struct {
@@ -392,9 +394,9 @@ func TestThrottlerPattern(t *testing.T) {
 		},
 		"Throttler latency should throttle on latency above threshold": {
 			tms: 3,
-			thr: NewThrottlerLatency(ms0_9, ms1_0*5),
+			thr: NewThrottlerLatency(ms0_9, ms5_0),
 			ctxs: []context.Context{
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(ms1_0*-10).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
 				context.Background(),
 				context.Background(),
 			},
@@ -406,21 +408,39 @@ func TestThrottlerPattern(t *testing.T) {
 		},
 		"Throttler latency should not throttle on latency above threshold after retention": {
 			tms: 3,
-			thr: NewThrottlerLatency(ms0_9, ms1_0*3),
+			thr: NewThrottlerLatency(ms0_9, ms3_0),
 			ctxs: []context.Context{
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(ms1_0*-10).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
 				context.Background(),
 				context.Background(),
 			},
 			pres: []Runnable{
 				nil,
 				nil,
-				delayed(ms1_0*5, nope),
+				delayed(ms5_0, nope),
 			},
 			errs: []error{
 				nil,
 				errors.New("throttler has exceed latency threshold"),
 				nil,
+			},
+		},
+		"Throttler percentile should throttle on latency above threshold": {
+			tms: 5,
+			thr: NewThrottlerPercentile(ms3_0, 0.5, ms5_0),
+			ctxs: []context.Context{
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				context.Background(),
+			},
+			errs: []error{
+				nil,
+				nil,
+				errors.New("throttler has exceed latency threshold"),
+				errors.New("throttler has exceed latency threshold"),
+				errors.New("throttler has exceed latency threshold"),
 			},
 		},
 	}
