@@ -106,6 +106,17 @@ func TestThrottlerPattern(t *testing.T) {
 				ms0_9,
 			},
 		},
+		"Throttler backoff should sleep for correct time periods": {
+			tms: 5,
+			thr: NewThrottlerBackoff(ms1_0, 20*ms1_0, true),
+			durs: []time.Duration{
+				ms0_9,
+				ms0_9 * 4,
+				ms0_9 * 9,
+				ms0_9 * 16,
+				ms0_9,
+			},
+		},
 		"Throttler panic should panic": {
 			tms: 3,
 			thr: NewThrottlerPanic(),
