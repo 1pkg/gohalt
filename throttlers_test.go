@@ -21,7 +21,7 @@ const (
 type tcase struct {
 	tms  uint64
 	thr  Throttler
-	act  Runnable
+	acts []Runnable
 	pres []Runnable
 	ctxs []context.Context
 	errs []error
@@ -60,8 +60,10 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 	}()
 	dur = time.Since(ts)
 	// run additional action only if present
-	if t.act != nil {
-		_ = t.act(ctx)
+	if index < len(t.acts) {
+		if act := t.acts[index]; act != nil {
+			_ = act(ctx)
+		}
 	}
 	// imitate over releasing
 	for i := 0; i < index+1; i++ {
@@ -187,7 +189,11 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler running should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			errs: []error{
 				nil,
 				errors.New("throttler has exceed running threshold"),
@@ -197,7 +203,11 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler buffered should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerBuffered(1),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			durs: []time.Duration{
 				0,
 				ms0_9,
@@ -207,7 +217,11 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler priority should throttle on threshold": {
 			tms: 3,
 			thr: NewThrottlerPriority(1, 0),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			durs: []time.Duration{
 				0,
 				ms0_9,
@@ -217,7 +231,11 @@ func TestThrottlerPattern(t *testing.T) {
 		"Throttler priority should not throttle on priority": {
 			tms: 7,
 			thr: NewThrottlerPriority(5, 2),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			ctxs: []context.Context{
 				WithPriority(context.Background(), 1),
 				WithPriority(context.Background(), 1),
@@ -244,7 +262,11 @@ func TestThrottlerPattern(t *testing.T) {
 				ms1_0,
 				0,
 			),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			pres: []Runnable{
 				nil,
 				nil,
@@ -269,7 +291,11 @@ func TestThrottlerPattern(t *testing.T) {
 				ms2_0,
 				ms1_0,
 			),
-			act: delayed(ms1_0, nope),
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
 			pres: []Runnable{
 				nil,
 				nil,
@@ -344,9 +370,7 @@ func TestThrottlerPattern(t *testing.T) {
 		},
 		"Throttler metric should throttle with error on internal error": {
 			tms: 3,
-			thr: NewThrottlerMetric(
-				mtcmock{err: errors.New("test")},
-			),
+			thr: NewThrottlerMetric(mtcmock{err: errors.New("test")}),
 			errs: []error{
 				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
 				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
@@ -355,19 +379,48 @@ func TestThrottlerPattern(t *testing.T) {
 		},
 		"Throttler monitor should not throttle on metric below threshold": {
 			tms: 3,
-			thr: NewThrottlerMetric(
-				mtcmock{metric: false},
-			),
+			thr: NewThrottlerMetric(mtcmock{metric: false}),
 		},
 		"Throttler monitor should throttle on metric above threshold": {
 			tms: 3,
-			thr: NewThrottlerMetric(
-				mtcmock{metric: true},
-			),
+			thr: NewThrottlerMetric(mtcmock{metric: true}),
 			errs: []error{
 				errors.New("throttler has reached metric threshold"),
 				errors.New("throttler has reached metric threshold"),
 				errors.New("throttler has reached metric threshold"),
+			},
+		},
+		"Throttler latency should throttle on latency above threshold": {
+			tms: 3,
+			thr: NewThrottlerLatency(ms0_9, ms1_0*5),
+			ctxs: []context.Context{
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(ms1_0*-10).UTC().UnixNano()),
+				context.Background(),
+				context.Background(),
+			},
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed latency threshold"),
+				errors.New("throttler has exceed latency threshold"),
+			},
+		},
+		"Throttler latency should not throttle on latency above threshold after retention": {
+			tms: 3,
+			thr: NewThrottlerLatency(ms0_9, ms1_0*3),
+			ctxs: []context.Context{
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(ms1_0*-10).UTC().UnixNano()),
+				context.Background(),
+				context.Background(),
+			},
+			pres: []Runnable{
+				nil,
+				nil,
+				delayed(ms1_0*5, nope),
+			},
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed latency threshold"),
+				nil,
 			},
 		},
 	}
