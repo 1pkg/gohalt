@@ -453,8 +453,8 @@ func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
 	v.tvisitLatency(ctx, thr)
 }
 
-func (thr tlatency) Acquire(context.Context) error {
-	if latency := time.Duration(atomic.LoadUint64(&thr.latency)); latency > thr.threshold {
+func (thr *tlatency) Acquire(context.Context) error {
+	if latency := atomic.LoadUint64(&thr.latency); latency > uint64(thr.threshold) {
 		return errors.New("throttler has exceed latency threshold")
 	}
 	return nil
@@ -462,7 +462,7 @@ func (thr tlatency) Acquire(context.Context) error {
 
 func (thr *tlatency) Release(ctx context.Context) error {
 	latency := uint64(ctxTimestamp(ctx) - time.Now().UTC().UnixNano())
-	if latency > uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) < uint64(thr.threshold) {
+	if latency > uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
 		atomic.StoreUint64(&thr.latency, latency)
 		gorun(ctx, delayed(thr.retention, func(context.Context) error {
 			atomic.StoreUint64(&thr.latency, 0)
