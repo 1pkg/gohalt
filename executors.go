@@ -3,6 +3,7 @@ package gohalt
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,6 +29,17 @@ func loop(period time.Duration, run Runnable) Runnable {
 func delayed(after time.Duration, run Runnable) Runnable {
 	return func(ctx context.Context) error {
 		time.Sleep(after)
+		return run(ctx)
+	}
+}
+
+func locked(run Runnable) Runnable {
+	var lock uint64
+	return func(ctx context.Context) error {
+		defer atomic.AddUint64(&lock, ^uint64(0))
+		if atomic.AddUint64(&lock, 1) > 1 {
+			return nil
+		}
 		return run(ctx)
 	}
 }
