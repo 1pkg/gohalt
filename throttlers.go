@@ -96,11 +96,7 @@ type tbackoff struct {
 }
 
 func NewThrottlerBackoff(duration time.Duration, limit time.Duration, reset bool) *tbackoff {
-	return &tbackoff{
-		duration: duration,
-		limit:    limit,
-		reset:    reset,
-	}
+	return &tbackoff{duration: duration, limit: limit, reset: reset}
 }
 
 func (thr *tbackoff) accept(ctx context.Context, v tvisitor) {
@@ -346,13 +342,14 @@ type ttimed struct {
 }
 
 func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) ttimed {
-	thr := NewThrottlerAfter(threshold)
+	tafter := NewThrottlerAfter(threshold)
 	delta, window := threshold, interval
 	if quantum > 0 && interval > quantum {
 		delta = uint64(math.Ceil(float64(threshold) / (float64(interval) / float64(quantum))))
 		window = quantum
 	}
-	loop := once(
+	thr := ttimed{tafter: tafter, interval: interval, quantum: quantum}
+	thr.loop = once(
 		loop(window, func(ctx context.Context) error {
 			if current := atomic.AddUint64(&thr.current, ^(delta - 1)); int64(current) < 0 {
 				// fix running discrepancies
@@ -361,7 +358,7 @@ func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Du
 			return ctx.Err()
 		}),
 	)
-	return ttimed{tafter: thr, loop: loop, interval: interval, quantum: quantum}
+	return thr
 }
 
 func (thr ttimed) accept(ctx context.Context, v tvisitor) {
@@ -440,13 +437,19 @@ func (thr tmetric) Release(context.Context) error {
 }
 
 type tlatency struct {
+	reset     Runnable
 	latency   uint64
 	threshold time.Duration
 	retention time.Duration
 }
 
 func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
-	return &tlatency{threshold: threshold, retention: retention}
+	thr := &tlatency{threshold: threshold, retention: retention}
+	thr.reset = delayed(retention, func(context.Context) error {
+		atomic.StoreUint64(&thr.latency, 0)
+		return nil
+	})
+	return thr
 }
 
 func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
@@ -461,18 +464,17 @@ func (thr *tlatency) Acquire(context.Context) error {
 }
 
 func (thr *tlatency) Release(ctx context.Context) error {
-	latency := uint64(time.Now().UTC().UnixNano() - ctxTimestamp(ctx))
+	ctxTs := ctxTimestamp(ctx)
+	latency := uint64(time.Now().UTC().UnixNano() - ctxTs)
 	if latency >= uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
 		atomic.StoreUint64(&thr.latency, latency)
-		gorun(ctx, delayed(thr.retention, func(context.Context) error {
-			atomic.StoreUint64(&thr.latency, 0)
-			return nil
-		}))
+		gorun(ctx, thr.reset)
 	}
 	return nil
 }
 
 type tpercentile struct {
+	reset      Runnable
 	latencies  *blatheap
 	threshold  time.Duration
 	percentile float64
@@ -484,12 +486,14 @@ func NewThrottlerPercentile(threshold time.Duration, percentile float64, retenti
 	if percentile > 1.0 {
 		percentile = 1.0
 	}
-	return tpercentile{
-		latencies:  &blatheap{},
-		threshold:  threshold,
-		percentile: percentile,
-		retention:  retention,
-	}
+	thr := tpercentile{latencies: &blatheap{}, threshold: threshold, percentile: percentile, retention: retention}
+	thr.reset = locked(
+		delayed(thr.retention, func(context.Context) error {
+			thr.latencies.Prune()
+			return nil
+		}),
+	)
+	return thr
 }
 
 func (thr tpercentile) accept(ctx context.Context, v tvisitor) {
@@ -500,10 +504,7 @@ func (thr tpercentile) Acquire(ctx context.Context) error {
 	if length := thr.latencies.Len(); length > 0 {
 		at := int(math.Round(float64(length-1) * thr.percentile))
 		if latency := thr.latencies.At(at); latency >= uint64(thr.threshold) {
-			gorun(ctx, delayed(thr.retention, func(context.Context) error {
-				thr.latencies.Prune()
-				return nil
-			}))
+			gorun(ctx, thr.reset)
 			return errors.New("throttler has exceed latency threshold")
 		}
 	}
@@ -511,7 +512,8 @@ func (thr tpercentile) Acquire(ctx context.Context) error {
 }
 
 func (thr tpercentile) Release(ctx context.Context) error {
-	latency := uint64(time.Now().UTC().UnixNano() - ctxTimestamp(ctx))
+	ctxTs := ctxTimestamp(ctx)
+	latency := uint64(time.Now().UTC().UnixNano() - ctxTs)
 	heap.Push(thr.latencies, latency)
 	return nil
 }

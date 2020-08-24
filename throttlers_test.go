@@ -18,6 +18,7 @@ const (
 	ms2_0 time.Duration = 2 * time.Millisecond
 	ms3_0 time.Duration = 3 * time.Millisecond
 	ms5_0 time.Duration = 5 * time.Millisecond
+	ms7_0 time.Duration = 7 * time.Millisecond
 )
 
 type tcase struct {
@@ -29,6 +30,7 @@ type tcase struct {
 	errs []error
 	durs []time.Duration
 	idx  int64
+	over bool
 }
 
 func (t *tcase) run(index int) (err error, dur time.Duration) {
@@ -67,8 +69,11 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 			_ = act(ctx)
 		}
 	}
-	// imitate over releasing
-	for i := 0; i < index+1; i++ {
+	limit := 1
+	if t.over { // imitate over releasing
+		limit = index + 1
+	}
+	for i := 0; i < limit; i++ {
 		if err := t.thr.Release(ctx); err != nil {
 			return err, dur
 		}
@@ -201,6 +206,7 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed running threshold"),
 				errors.New("throttler has exceed running threshold"),
 			},
+			over: true,
 		},
 		"Throttler buffered should throttle on threshold": {
 			tms: 3,
@@ -215,6 +221,7 @@ func TestThrottlerPattern(t *testing.T) {
 				ms0_9,
 				ms0_9,
 			},
+			over: true,
 		},
 		"Throttler priority should throttle on threshold": {
 			tms: 3,
@@ -229,6 +236,7 @@ func TestThrottlerPattern(t *testing.T) {
 				ms0_9,
 				ms0_9,
 			},
+			over: true,
 		},
 		"Throttler priority should not throttle on priority": {
 			tms: 7,
@@ -429,7 +437,7 @@ func TestThrottlerPattern(t *testing.T) {
 			tms: 5,
 			thr: NewThrottlerPercentile(ms3_0, 0.5, ms5_0),
 			ctxs: []context.Context{
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				context.Background(),
 				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
 				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
 				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
@@ -441,6 +449,31 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed latency threshold"),
 				errors.New("throttler has exceed latency threshold"),
 				errors.New("throttler has exceed latency threshold"),
+			},
+		},
+		"Throttler percentile should throttle on latency above threshold after retention": {
+			tms: 5,
+			thr: NewThrottlerPercentile(ms3_0, 1.5, ms5_0),
+			ctxs: []context.Context{
+				context.Background(),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				context.Background(),
+			},
+			pres: []Runnable{
+				nil,
+				nil,
+				nil,
+				nil,
+				delayed(ms7_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				errors.New("throttler has exceed latency threshold"),
+				errors.New("throttler has exceed latency threshold"),
+				nil,
 			},
 		},
 	}
