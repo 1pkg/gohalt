@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -92,6 +93,8 @@ func (t *tcase) result(index int) (err error, dur time.Duration) {
 }
 
 func TestThrottlerPattern(t *testing.T) {
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	table := map[string]tcase{
 		"Throttler echo should not throttle on nil input": {
 			tms: 3,
@@ -323,7 +326,7 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 			},
 		},
-		"Throttler monitor should throttle with error on internal error": {
+		"Throttler monitor should throttle on internal stats error": {
 			tms: 3,
 			thr: NewThrottlerMonitor(
 				mntmock{err: errors.New("test")},
@@ -378,7 +381,7 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed stats threshold"),
 			},
 		},
-		"Throttler metric should throttle with error on internal error": {
+		"Throttler metric should throttle on internal metric error": {
 			tms: 3,
 			thr: NewThrottlerMetric(mtcmock{err: errors.New("test")}),
 			errs: []error{
@@ -475,6 +478,176 @@ func TestThrottlerPattern(t *testing.T) {
 				errors.New("throttler has exceed latency threshold"),
 				nil,
 			},
+		},
+		"Throttler context should throttle on canceled context": {
+			tms: 3,
+			thr: NewThrottlerContext(),
+			ctxs: []context.Context{
+				cctx,
+				context.Background(),
+				cctx,
+			},
+			errs: []error{
+				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+				nil,
+				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+			},
+		},
+		"Throttler pattern should throttle on internal key error": {
+			tms: 3,
+			thr: NewThrottlerPattern(),
+			ctxs: []context.Context{
+				context.Background(),
+				WithKey(context.Background(), 125),
+				WithKey(context.Background(), "test"),
+			},
+			errs: []error{
+				errors.New("throttler hasn't found any key"),
+				errors.New("throttler hasn't found any key"),
+				errors.New("throttler hasn't found any key"),
+			},
+		},
+		"Throttler pattern should throttle on matching throttler pattern": {
+			tms: 5,
+			thr: NewThrottlerPattern(
+				Pattern{
+					Pattern:   regexp.MustCompile("nontest"),
+					Throttler: NewThrottlerEcho(nil),
+				},
+				Pattern{
+					Pattern:   regexp.MustCompile("test"),
+					Throttler: NewThrottlerEcho(errors.New("test")),
+				},
+			),
+			ctxs: []context.Context{
+				context.Background(),
+				WithKey(context.Background(), 125),
+				WithKey(context.Background(), "test"),
+				WithKey(context.Background(), "nontest"),
+				WithKey(context.Background(), "non"),
+			},
+			errs: []error{
+				errors.New("throttler hasn't found any key"),
+				errors.New("throttler hasn't found any key"),
+				errors.New("test"),
+				nil,
+				errors.New("throttler hasn't found any key"),
+			},
+		},
+		"Throttler ring should throttle on internal index error": {
+			tms: 3,
+			thr: NewThrottlerRing(),
+			errs: []error{
+				errors.New("throttler hasn't found any index"),
+				errors.New("throttler hasn't found any index"),
+				errors.New("throttler hasn't found any index"),
+			},
+		},
+		"Throttler ring should throttle on matching throttler index": {
+			tms: 5,
+			thr: NewThrottlerRing(
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				nil,
+				errors.New("test"),
+				nil,
+				errors.New("test"),
+				nil,
+			},
+		},
+		"Throttler all should not throttle on empty list": {
+			tms: 3,
+			thr: NewThrottlerAll(),
+		},
+		"Throttler all should not throttle on non internal errors": {
+			tms: 3,
+			thr: NewThrottlerAll(
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(nil),
+			),
+		},
+		"Throttler all should not throttle on some internal errors": {
+			tms: 3,
+			thr: NewThrottlerAll(
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(errors.New("test")),
+			),
+		},
+		"Throttler all should throttle on all internal errors": {
+			tms: 3,
+			thr: NewThrottlerAll(
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+			},
+		},
+		"Throttler any should not throttle on empty list": {
+			tms: 3,
+			thr: NewThrottlerAny(),
+		},
+		"Throttler any should not throttle on non internal errors": {
+			tms: 3,
+			thr: NewThrottlerAny(
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(nil),
+			),
+		},
+		"Throttler any should throttle on some internal errors": {
+			tms: 3,
+			thr: NewThrottlerAny(
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(nil),
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+			},
+		},
+		"Throttler any should throttle on all internal errors": {
+			tms: 3,
+			thr: NewThrottlerAny(
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+				errors.New("throttler has received internal errors"),
+			},
+		},
+		"Throttler not should not throttle on internal errors": {
+			tms: 3,
+			thr: NewThrottlerNot(NewThrottlerEcho(errors.New("test"))),
+		},
+		"Throttler not should throttle on non internal errors": {
+			tms: 3,
+			thr: NewThrottlerNot(NewThrottlerEcho(nil)),
+			errs: []error{
+				errors.New("throttler hasn't received any internal error"),
+				errors.New("throttler hasn't received any internal error"),
+				errors.New("throttler hasn't received any internal error"),
+			},
+		},
+		"Throttler suppress should not throttle on internal errors": {
+			tms: 3,
+			thr: NewThrottlerSuppress(NewThrottlerEcho(errors.New("test"))),
+		},
+		"Throttler suppress should throttle on non internal errors": {
+			tms: 3,
+			thr: NewThrottlerSuppress(NewThrottlerEcho(nil)),
 		},
 	}
 	for tname, tcase := range table {
