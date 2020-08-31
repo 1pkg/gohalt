@@ -15,19 +15,17 @@ const (
 	ghctxmarshaler ghctxid = "gohalt_context_marshaler"
 )
 
-func WithParams(
-	ctx context.Context,
-	priority uint8,
-	key interface{},
-	data interface{},
-	marshaler Marshaler,
-) context.Context {
-	ctx = WithPriority(ctx, priority)
-	ctx = WithKey(ctx, key)
-	ctx = WithData(ctx, data)
-	ctx = WithTimestamp(ctx)
-	ctx = WithMarshaler(ctx, marshaler)
-	return ctx
+func WithTimestamp(ctx context.Context, ts time.Time) context.Context {
+	return context.WithValue(ctx, ghctxtimestamp, ts)
+}
+
+func ctxTimestamp(ctx context.Context) time.Time {
+	if val := ctx.Value(ghctxtimestamp); val != nil {
+		if timestamp, ok := val.(time.Time); ok {
+			return timestamp.UTC()
+		}
+	}
+	return time.Now().UTC()
 }
 
 func WithPriority(ctx context.Context, priority uint8) context.Context {
@@ -59,19 +57,6 @@ func ctxData(ctx context.Context) interface{} {
 	return ctx.Value(ghctxdata)
 }
 
-func WithTimestamp(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ghctxtimestamp, time.Now().UTC().UnixNano())
-}
-
-func ctxTimestamp(ctx context.Context) int64 {
-	if val := ctx.Value(ghctxtimestamp); val != nil {
-		if timestamp, ok := val.(int64); ok {
-			return timestamp
-		}
-	}
-	return time.Now().UTC().UnixNano()
-}
-
 func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context {
 	return context.WithValue(ctx, ghctxmarshaler, mrsh)
 }
@@ -83,6 +68,22 @@ func ctxMarshaler(ctx context.Context) Marshaler {
 		}
 	}
 	return DefaultMarshaler
+}
+
+func WithParams(
+	ctx context.Context,
+	ts time.Time,
+	priority uint8,
+	key interface{},
+	data interface{},
+	marshaler Marshaler,
+) context.Context {
+	ctx = WithTimestamp(ctx, ts)
+	ctx = WithPriority(ctx, priority)
+	ctx = WithKey(ctx, key)
+	ctx = WithData(ctx, data)
+	ctx = WithMarshaler(ctx, marshaler)
+	return ctx
 }
 
 type ctxthr struct {

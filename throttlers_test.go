@@ -407,7 +407,7 @@ func TestThrottlerPattern(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerLatency(ms0_9, ms5_0),
 			ctxs: []context.Context{
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
 				context.Background(),
 				context.Background(),
 			},
@@ -421,7 +421,7 @@ func TestThrottlerPattern(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerLatency(ms0_9, ms3_0),
 			ctxs: []context.Context{
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
 				context.Background(),
 				context.Background(),
 			},
@@ -441,9 +441,9 @@ func TestThrottlerPattern(t *testing.T) {
 			thr: NewThrottlerPercentile(ms3_0, 0.5, ms5_0),
 			ctxs: []context.Context{
 				context.Background(),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
+				WithTimestamp(context.Background(), time.Now().Add(-ms1_0)),
 				context.Background(),
 			},
 			errs: []error{
@@ -459,9 +459,9 @@ func TestThrottlerPattern(t *testing.T) {
 			thr: NewThrottlerPercentile(ms3_0, 1.5, ms5_0),
 			ctxs: []context.Context{
 				context.Background(),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms5_0).UTC().UnixNano()),
-				context.WithValue(context.Background(), ghctxtimestamp, time.Now().Add(-ms1_0).UTC().UnixNano()),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
+				WithTimestamp(context.Background(), time.Now().Add(-ms5_0)),
+				WithTimestamp(context.Background(), time.Now().Add(-ms1_0)),
 				context.Background(),
 			},
 			pres: []Runnable{
@@ -491,6 +491,52 @@ func TestThrottlerPattern(t *testing.T) {
 				fmt.Errorf("throttler has received context error %w", cctx.Err()),
 				nil,
 				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+			},
+		},
+		"Throttler enqueue should throttle on internal message error": {
+			tms: 3,
+			thr: NewThrottlerEnqueue(enqmock{}),
+			errs: []error{
+				errors.New("throttler hasn't found any message"),
+				errors.New("throttler hasn't found any message"),
+				errors.New("throttler hasn't found any message"),
+			},
+		},
+		"Throttler enqueue should throttle on internal marshaler error": {
+			tms: 3,
+			thr: NewThrottlerEnqueue(enqmock{}),
+			ctxs: []context.Context{
+				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
+				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
+				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
+			},
+			errs: []error{
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+			},
+		},
+		"Throttler enqueue should throttle on internal enqueuer error": {
+			tms: 3,
+			thr: NewThrottlerEnqueue(enqmock{err: errors.New("test")}),
+			ctxs: []context.Context{
+				WithData(context.Background(), "test"),
+				WithData(context.Background(), "test"),
+				WithData(context.Background(), "test"),
+			},
+			errs: []error{
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+			},
+		},
+		"Throttler enqueue should not throttle on enqueuer success": {
+			tms: 3,
+			thr: NewThrottlerEnqueue(enqmock{}),
+			ctxs: []context.Context{
+				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{}.Marshal),
+				WithData(context.Background(), "test"),
+				WithData(context.Background(), "test"),
 			},
 		},
 		"Throttler pattern should throttle on internal key error": {
