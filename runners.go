@@ -22,7 +22,7 @@ func NewRunnerSync(ctx context.Context, thr Throttler) *rsync {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rsync{thr: thr, ctx: ctx}
 	r.report = func(err error) {
-		if r.err != nil {
+		if r.err == nil && err != nil {
 			r.err = err
 			cancel()
 		}
@@ -47,7 +47,7 @@ func (r *rsync) Run(run Runnable) {
 	default:
 	}
 	if err := run(r.ctx); err != nil {
-		r.report(fmt.Errorf("function error has happened %w", err))
+		r.report(fmt.Errorf("runnable error has happened %w", err))
 		return
 	}
 }
@@ -69,10 +69,12 @@ func NewRunnerAsync(ctx context.Context, thr Throttler) *rasync {
 	r := rasync{thr: thr, ctx: ctx}
 	var once sync.Once
 	r.report = func(err error) {
-		once.Do(func() {
-			r.err = err
-			cancel()
-		})
+		if err != nil {
+			once.Do(func() {
+				r.err = err
+				cancel()
+			})
+		}
 	}
 	return &r
 }
@@ -97,7 +99,7 @@ func (r *rasync) Run(run Runnable) {
 		default:
 		}
 		if err := run(r.ctx); err != nil {
-			r.report(fmt.Errorf("function error has happened %w", err))
+			r.report(fmt.Errorf("runnable error has happened %w", err))
 			return
 		}
 	}()
@@ -105,6 +107,5 @@ func (r *rasync) Run(run Runnable) {
 
 func (r *rasync) Result() error {
 	r.wg.Wait()
-	r.report(nil)
 	return r.err
 }

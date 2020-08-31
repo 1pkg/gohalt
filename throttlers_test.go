@@ -98,7 +98,7 @@ func (t *tcase) result(index int) (err error, dur time.Duration) {
 	return
 }
 
-func TestThrottlerPattern(t *testing.T) {
+func TestThrottlers(t *testing.T) {
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	table := map[string]tcase{
