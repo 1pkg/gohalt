@@ -662,15 +662,21 @@ func (thr *tring) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tring) Acquire(ctx context.Context) error {
-	acquire := atomic.AddUint64(&thr.acquire, 1)
-	index := int(acquire) % len(thr.thrs)
-	return thr.thrs[index].Acquire(ctx)
+	if length := len(thr.thrs); length > 0 {
+		acquire := atomic.AddUint64(&thr.acquire, 1) - 1
+		index := int(acquire) % length
+		return thr.thrs[index].Acquire(ctx)
+	}
+	return errors.New("throttler hasn't found any index")
 }
 
 func (thr *tring) Release(ctx context.Context) error {
-	release := atomic.AddUint64(&thr.release, 1)
-	index := int(release) % len(thr.thrs)
-	return thr.thrs[index].Release(ctx)
+	if length := len(thr.thrs); length > 0 {
+		release := atomic.AddUint64(&thr.release, 1) - 1
+		index := int(release) % length
+		return thr.thrs[index].Release(ctx)
+	}
+	return nil
 }
 
 type tall []Throttler
@@ -684,12 +690,15 @@ func (thrs tall) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
-	for _, thr := range thrs {
-		if err := thr.Acquire(ctx); err == nil {
-			return nil
+	if length := len(thrs); length > 0 {
+		for _, thr := range thrs {
+			if err := thr.Acquire(ctx); err == nil {
+				return nil
+			}
 		}
+		return errors.New("throttler has received internal errors")
 	}
-	return errors.New("throttler has received one derived error")
+	return nil
 }
 
 func (thrs tall) Release(ctx context.Context) error {
@@ -712,36 +721,29 @@ func (thrs tany) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thrs tany) Acquire(ctx context.Context) error {
-	errch := make(chan error, len(thrs))
-	var wg sync.WaitGroup
+	runs := make([]Runnable, 0, len(thrs))
 	for _, thr := range thrs {
-		wg.Add(1)
-		go func(thr Throttler) {
+		thr := thr
+		runs = append(runs, func(ctx context.Context) error {
 			if err := thr.Acquire(ctx); err != nil {
-				errch <- errors.New("throttler has received multiple derived errors")
+				return errors.New("throttler has received internal errors")
 			}
-			wg.Done()
-		}(thr)
+			return nil
+		})
 	}
-	wg.Wait()
-	close(errch)
-	for err := range errch {
-		return err
-	}
-	return nil
+	return all(runs...)(ctx)
 }
 
 func (thrs tany) Release(ctx context.Context) error {
-	var wg sync.WaitGroup
+	runs := make([]Runnable, 0, len(thrs))
 	for _, thr := range thrs {
-		wg.Add(1)
-		go func(thr Throttler) {
+		thr := thr
+		runs = append(runs, func(ctx context.Context) error {
 			_ = thr.Release(ctx)
-			wg.Done()
-		}(thr)
+			return nil
+		})
 	}
-	wg.Wait()
-	return nil
+	return all(runs...)(ctx)
 }
 
 type tnot struct {
@@ -760,7 +762,7 @@ func (thr tnot) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler hasn't received any derived errors")
+	return errors.New("throttler hasn't received any internal error")
 }
 
 func (thr tnot) Release(ctx context.Context) error {

@@ -69,6 +69,27 @@ func once(run Runnable) Runnable {
 	}
 }
 
+func all(runs ...Runnable) Runnable {
+	return func(ctx context.Context) error {
+		var once sync.Once
+		var wg sync.WaitGroup
+		var result error
+		for _, run := range runs {
+			wg.Add(1)
+			go func(run Runnable) {
+				if err := run(ctx); err != nil {
+					once.Do(func() {
+						result = err
+					})
+				}
+				wg.Done()
+			}(run)
+		}
+		wg.Wait()
+		return result
+	}
+}
+
 func gorun(ctx context.Context, r Runnable) {
 	go func() {
 		_ = r(ctx)
