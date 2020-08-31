@@ -9,6 +9,12 @@ import (
 
 type Runnable func(context.Context) error
 
+func use(err error) Runnable {
+	return func(ctx context.Context) error {
+		return err
+	}
+}
+
 func nope(context.Context) error {
 	return nil
 }

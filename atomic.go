@@ -41,10 +41,6 @@ func atomicIncr(number *uint64) uint64 {
 	return atomic.AddUint64(number, 1)
 }
 
-func atomicDecr(number *uint64) uint64 {
-	return atomic.AddUint64(number, ^uint64(0))
-}
-
 func atomicSet(number *uint64, value uint64) uint64 {
 	atomic.StoreUint64(number, value)
 	return value

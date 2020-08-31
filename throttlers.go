@@ -46,6 +46,22 @@ type tvisitor interface {
 	tvisitSuppress(context.Context, *tsuppress)
 }
 
+type tmock struct {
+	aerr error
+	rerr error
+}
+
+func (tmock) accept(context.Context, tvisitor) {
+}
+
+func (thr tmock) Acquire(context.Context) error {
+	return thr.aerr
+}
+
+func (thr tmock) Release(context.Context) error {
+	return thr.rerr
+}
+
 type techo struct {
 	err error
 }
