@@ -479,6 +479,31 @@ func TestThrottlerPattern(t *testing.T) {
 				nil,
 			},
 		},
+		"Throttler adaptive should throttle on throttling adoptee": {
+			tms: 3,
+			thr: NewThrottlerAdaptive(
+				7,
+				ms2_0,
+				ms1_0,
+				2,
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
+			},
+		},
+		"Throttler adaptive should not throttle on non throttling adoptee": {
+			tms: 3,
+			thr: NewThrottlerAdaptive(
+				0,
+				ms2_0,
+				ms1_0,
+				1,
+				NewThrottlerEcho(nil),
+			),
+		},
 		"Throttler context should throttle on canceled context": {
 			tms: 3,
 			thr: NewThrottlerContext(),

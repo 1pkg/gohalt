@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"regexp"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -104,12 +103,12 @@ func (thr *tbackoff) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tbackoff) Acquire(context.Context) error {
-	current := atomic.AddUint64(&thr.current, 1)
+	current := atomicBIncr(&thr.current)
 	duration := thr.duration * time.Duration(current*current)
 	if duration > thr.limit {
 		duration = thr.limit
 		if thr.reset {
-			atomic.StoreUint64(&thr.current, 0)
+			atomicSet(&thr.current, 0)
 		}
 	}
 	time.Sleep(duration)
@@ -152,7 +151,7 @@ func (thr *teach) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *teach) Acquire(context.Context) error {
-	if current := atomic.AddUint64(&thr.current, 1); current%thr.threshold == 0 {
+	if current := atomicIncr(&thr.current); current%thr.threshold == 0 {
 		return errors.New("throttler has reached periodic threshold")
 	}
 	return nil
@@ -176,7 +175,7 @@ func (thr *tbefore) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tbefore) Acquire(context.Context) error {
-	if current := atomic.AddUint64(&thr.current, 1); current <= thr.threshold {
+	if current := atomicBIncr(&thr.current); current <= thr.threshold {
 		return errors.New("throttler has not reached threshold yet")
 	}
 	return nil
@@ -227,7 +226,7 @@ func (thr *tafter) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tafter) Acquire(context.Context) error {
-	if current := atomic.AddUint64(&thr.current, 1); current > thr.threshold {
+	if current := atomicBIncr(&thr.current); current > thr.threshold {
 		return errors.New("throttler has exceed threshold")
 	}
 	return nil
@@ -251,17 +250,14 @@ func (thr *trunning) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *trunning) Acquire(context.Context) error {
-	if running := atomic.AddUint64(&thr.running, 1); running > thr.threshold {
+	if running := atomicBIncr(&thr.running); running > thr.threshold {
 		return errors.New("throttler has exceed running threshold")
 	}
 	return nil
 }
 
 func (thr *trunning) Release(context.Context) error {
-	if running := atomic.AddUint64(&thr.running, ^uint64(0)); int64(running) < 0 {
-		// fix running discrepancies
-		atomic.AddUint64(&thr.running, 1)
-	}
+	atomicBDecr(&thr.running)
 	return nil
 }
 
@@ -351,10 +347,7 @@ func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Du
 	thr := ttimed{tafter: tafter, interval: interval, quantum: quantum}
 	thr.loop = once(
 		loop(window, func(ctx context.Context) error {
-			if current := atomic.AddUint64(&thr.current, ^(delta - 1)); int64(current) < 0 {
-				// fix running discrepancies
-				atomic.StoreUint64(&thr.current, 0)
-			}
+			atomicBSub(&thr.current, delta)
 			return ctx.Err()
 		}),
 	)
@@ -369,9 +362,8 @@ func (thr ttimed) Acquire(ctx context.Context) error {
 	// start loop on first acquire
 	gorun(ctx, thr.loop)
 	err := thr.tafter.Acquire(ctx)
-	if current := atomic.LoadUint64(&thr.current); current > thr.threshold {
-		// fix running discrepancies
-		atomic.StoreUint64(&thr.current, thr.threshold)
+	if current := atomicGet(&thr.current); current > thr.threshold {
+		atomicSet(&thr.current, thr.threshold)
 	}
 	return err
 }
@@ -446,7 +438,7 @@ type tlatency struct {
 func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
 	thr := &tlatency{threshold: threshold, retention: retention}
 	thr.reset = delayed(retention, func(context.Context) error {
-		atomic.StoreUint64(&thr.latency, 0)
+		atomicSet(&thr.latency, 0)
 		return nil
 	})
 	return thr
@@ -457,7 +449,7 @@ func (thr *tlatency) accept(ctx context.Context, v tvisitor) {
 }
 
 func (thr *tlatency) Acquire(context.Context) error {
-	if latency := atomic.LoadUint64(&thr.latency); latency > uint64(thr.threshold) {
+	if latency := atomicGet(&thr.latency); latency > uint64(thr.threshold) {
 		return errors.New("throttler has exceed latency threshold")
 	}
 	return nil
@@ -467,8 +459,8 @@ func (thr *tlatency) Release(ctx context.Context) error {
 	nowTs := time.Now().UTC().UnixNano()
 	ctxTs := ctxTimestamp(ctx).UnixNano()
 	latency := uint64(nowTs - ctxTs)
-	if latency >= uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
-		atomic.StoreUint64(&thr.latency, latency)
+	if latency >= uint64(thr.threshold) && atomicGet(&thr.latency) == 0 {
+		atomicSet(&thr.latency, latency)
 		gorun(ctx, thr.reset)
 	}
 	return nil
@@ -547,9 +539,9 @@ func (thr *tadaptive) accept(ctx context.Context, v tvisitor) {
 func (thr *tadaptive) Acquire(ctx context.Context) error {
 	err := thr.thr.Acquire(ctx)
 	if err != nil {
-		atomic.AddUint64(&thr.ttimed.threshold, ^(thr.step*thr.step - 1))
+		atomicBSub(&thr.ttimed.threshold, thr.step*thr.step)
 	} else {
-		atomic.AddUint64(&thr.ttimed.threshold, thr.step)
+		atomicBAdd(&thr.ttimed.threshold, thr.step)
 	}
 	return thr.ttimed.Acquire(ctx)
 }
@@ -665,7 +657,7 @@ func (thr *tring) accept(ctx context.Context, v tvisitor) {
 
 func (thr *tring) Acquire(ctx context.Context) error {
 	if length := len(thr.thrs); length > 0 {
-		acquire := atomic.AddUint64(&thr.acquire, 1) - 1
+		acquire := atomicIncr(&thr.acquire) - 1
 		index := int(acquire) % length
 		return thr.thrs[index].Acquire(ctx)
 	}
@@ -674,7 +666,7 @@ func (thr *tring) Acquire(ctx context.Context) error {
 
 func (thr *tring) Release(ctx context.Context) error {
 	if length := len(thr.thrs); length > 0 {
-		release := atomic.AddUint64(&thr.release, 1) - 1
+		release := atomicIncr(&thr.release) - 1
 		index := int(release) % length
 		return thr.thrs[index].Release(ctx)
 	}
