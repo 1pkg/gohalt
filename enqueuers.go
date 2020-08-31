@@ -7,7 +7,7 @@ import (
 	"time"
 
 	uuid "github.com/satori/go.uuid"
-	"github.com/segmentio/kafka-go"
+	kafka "github.com/segmentio/kafka-go"
 	"github.com/streadway/amqp"
 )
 
@@ -137,4 +137,12 @@ func (enq enqkafka) connect(ctx context.Context, net string, url string, topic s
 	}
 	enq.connection = connection
 	return nil
+}
+
+type enqmock struct {
+	err error
+}
+
+func (enq enqmock) Enqueue(context.Context, []byte) error {
+	return enq.err
 }

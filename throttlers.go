@@ -464,8 +464,9 @@ func (thr *tlatency) Acquire(context.Context) error {
 }
 
 func (thr *tlatency) Release(ctx context.Context) error {
-	ctxTs := ctxTimestamp(ctx)
-	latency := uint64(time.Now().UTC().UnixNano() - ctxTs)
+	nowTs := time.Now().UTC().UnixNano()
+	ctxTs := ctxTimestamp(ctx).UnixNano()
+	latency := uint64(nowTs - ctxTs)
 	if latency >= uint64(thr.threshold) && atomic.LoadUint64(&thr.latency) == 0 {
 		atomic.StoreUint64(&thr.latency, latency)
 		gorun(ctx, thr.reset)
@@ -512,8 +513,9 @@ func (thr tpercentile) Acquire(ctx context.Context) error {
 }
 
 func (thr tpercentile) Release(ctx context.Context) error {
-	ctxTs := ctxTimestamp(ctx)
-	latency := uint64(time.Now().UTC().UnixNano() - ctxTs)
+	nowTs := time.Now().UTC().UnixNano()
+	ctxTs := ctxTimestamp(ctx).UnixNano()
+	latency := uint64(nowTs - ctxTs)
 	heap.Push(thr.latencies, latency)
 	return nil
 }

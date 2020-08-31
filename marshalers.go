@@ -9,6 +9,14 @@ type Marshaler func(interface{}) ([]byte, error)
 
 var DefaultMarshaler Marshaler = json.Marshal
 
+type marshalerMock struct {
+	err error
+}
+
+func (m marshalerMock) Marshal(interface{}) ([]byte, error) {
+	return nil, m.err
+}
+
 type mobject struct {
 	obj interface{}
 }
