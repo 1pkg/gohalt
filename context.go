@@ -98,10 +98,12 @@ func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) conte
 
 func (ctx ctxthr) Done() <-chan struct{} {
 	ch := make(chan struct{})
+	// proactively test throttler once
 	if err := ctx.Err(); err != nil {
 		close(ch)
 		return ch
 	}
+	// run long throttler error pooling
 	gorun(ctx, loop(ctx.freq, func(ctx context.Context) error {
 		err := ctx.Err()
 		if err != nil {
@@ -113,7 +115,7 @@ func (ctx ctxthr) Done() <-chan struct{} {
 }
 
 func (ctx ctxthr) Err() (err error) {
-	r := NewRunnerSync(ctx, ctx.thr)
+	r := NewRunnerSync(ctx.Context, ctx.thr)
 	r.Run(nope)
 	return r.Result()
 }
