@@ -525,9 +525,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
-				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
-				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{err: errors.New("test")}.Marshal),
+				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
 			},
 			errs: []error{
 				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
@@ -553,7 +553,7 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithData(context.Background(), "test"), marshalerMock{}.Marshal),
+				WithMarshaler(WithData(context.Background(), "test"), marshal(nil)),
 				WithData(context.Background(), "test"),
 				WithData(context.Background(), "test"),
 			},

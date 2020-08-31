@@ -14,14 +14,13 @@ import (
 	beegoctx "github.com/astaxie/beego/context"
 	"github.com/gin-gonic/gin"
 	"github.com/go-kit/kit/endpoint"
-	"github.com/kataras/iris/v12"
-	"github.com/labstack/echo/v4"
+	iris "github.com/kataras/iris/v12"
+	echo "github.com/labstack/echo/v4"
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/server"
 	"github.com/revel/revel"
 	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 func ip(req *http.Request) interface{} {
@@ -54,10 +53,6 @@ func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
 		r := NewRunnerSync(with(gctx), thr)
 		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				gctx.Header(key, val)
-			}
 			gctx.Next()
 			return nil
 		})
@@ -83,10 +78,6 @@ func NewMiddlewareStd(h http.Handler, thr Throttler, with StdWith, on StdOn) htt
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		r := NewRunnerSync(with(req), thr)
 		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				w.Header().Add(key, val)
-			}
 			h.ServeHTTP(w, req)
 			return nil
 		})
@@ -114,10 +105,6 @@ func NewMiddlewareEcho(thr Throttler, with EchoWith, on EchoOn) echo.MiddlewareF
 		return func(ectx echo.Context) (err error) {
 			r := NewRunnerSync(with(ectx), thr)
 			r.Run(func(ctx context.Context) error {
-				headers := NewMeta(ctx, thr).Headers()
-				for key, val := range headers {
-					ectx.Response().Header().Set(key, val)
-				}
 				err = next(ectx)
 				return nil
 			})
@@ -145,13 +132,7 @@ func BeegoOnAbort(bctx *beegoctx.Context, err error) {
 func NewMiddlewareBeego(thr Throttler, with BeegoWith, on BeegoOn) beego.FilterFunc {
 	return func(bctx *beegoctx.Context) {
 		r := NewRunnerSync(with(bctx), thr)
-		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				bctx.Output.Header(key, val)
-			}
-			return nil
-		})
+		r.Run(nope)
 		if err := r.Result(); err != nil {
 			on(bctx, err)
 		}
@@ -245,10 +226,6 @@ func NewMiddlewareRevel(thr Throttler, with RevealWith, on RevealOn) revel.Filte
 	return func(rc *revel.Controller, chain []revel.Filter) {
 		r := NewRunnerSync(with(rc), thr)
 		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				rc.Response.Out.Header().Add(key, val)
-			}
 			chain[0](rc, chain[1:])
 			return nil
 		})
@@ -276,10 +253,6 @@ func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler {
 	return func(ictx iris.Context) {
 		r := NewRunnerSync(with(ictx), thr)
 		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				ictx.Header(key, val)
-			}
 			ictx.Next()
 			return nil
 		})
@@ -312,10 +285,6 @@ func NewMiddlewareFast(h fasthttp.RequestHandler, thr Throttler, with FastWith, 
 	return func(fctx *fasthttp.RequestCtx) {
 		r := NewRunnerSync(with(fctx), thr)
 		r.Run(func(ctx context.Context) error {
-			headers := NewMeta(ctx, thr).Headers()
-			for key, val := range headers {
-				fctx.Response.Header.Add(key, val)
-			}
 			h(fctx)
 			return nil
 		})
@@ -351,10 +320,6 @@ func NewRoundTripperStd(rt http.RoundTripper, thr Throttler, with RoundTripperSt
 func (rt rtstd) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	r := NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
-		headers := NewMeta(ctx, rt.thr).Headers()
-		for key, val := range headers {
-			req.Header.Add(key, val)
-		}
 		resp, err = rt.RoundTripper.RoundTrip(req)
 		return nil
 	})
@@ -394,10 +359,6 @@ func NewRoundTripperFast(rt RoundTripperFast, thr Throttler, with RoundTripperFa
 func (rt rtfast) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) {
 	r := NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
-		headers := NewMeta(ctx, rt.thr).Headers()
-		for key, val := range headers {
-			req.Header.Add(key, val)
-		}
 		err = rt.RoundTripperFast.Do(req, resp)
 		return nil
 	})
@@ -547,14 +508,6 @@ func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith
 	return grpcss{ServerStream: ss, thr: thr, with: with, on: on}
 }
 
-func (ss grpcss) SetHeader(md metadata.MD) error {
-	headers := NewMeta(ss.Context(), ss.thr).Headers()
-	for key, val := range headers {
-		md.Append(key, val)
-	}
-	return ss.ServerStream.SetHeader(md)
-}
-
 func (ss grpcss) SendMsg(msg interface{}) (err error) {
 	r := NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
 	r.Run(func(ctx context.Context) error {
@@ -632,11 +585,6 @@ func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.Han
 		return func(ctx context.Context, req server.Request, resp interface{}) (err error) {
 			r := NewRunnerSync(with(ctx, req), thr)
 			r.Run(func(ctx context.Context) error {
-				reqhead := req.Header()
-				headers := NewMeta(ctx, thr).Headers()
-				for key, val := range headers {
-					reqhead[key] = val
-				}
 				err = h(ctx, req, resp)
 				return nil
 			})
