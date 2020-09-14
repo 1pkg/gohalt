@@ -2,7 +2,7 @@
     <img src="https://raw.githubusercontent.com/1pkg/gohalt/master/gopher.png" alt="gohalt"/>
 </p>
 
-# Gohalt 👮‍♀️: Fast; Simple; Powerful; Go; Throttler library
+# Gohalt 👮‍♀️: Fast; Simple; Powerful; Go Throttler library
 
 [![lint](https://github.com/1pkg/gohalt/workflows/lint/badge.svg)](https://github.com/1pkg/gohalt/actions?query=workflow%3Alint+branch%3Amaster+)
 [![build](https://github.com/1pkg/gohalt/workflows/build/badge.svg)](https://github.com/1pkg/gohalt/actions?query=workflow%3Abuild+branch%3Amaster+)
@@ -13,13 +13,13 @@
 
 ## Introduction
 
-Gohalt is simple and convenient yet powerful and fast throttling library for go. Gohalt provides number of efficient throttlers and surronding tools to build throttling pipelines and rate limiters of any complexity adjusted for your specific needs, and easy integrate them with your infrastructure through set of builtin middlewares.
+Gohalt is simple and convenient yet powerful and efficient throttling library for [go](https://golang.org/). Gohalt provides various throttlers and surronding tools to build throttling pipelines and rate limiters of any complexity adjusted to your specific needs. Gohalt provides easy ways to integrate throttling and rate limiting with your infrastructure through built in middlewares.
 
 ## Features
 
-- Blastly fast and efficient, Gohalt has close to zero overhead for your application as it uses well optimized and simple throttling techniques.
-- Flexible and powerful, Gohalt supports numbers of different strategies and conditions for throttling that could be easily adjust to your needs, it's easy to build any throttling pipeline or rate limiter that you need with Gohalt.
-- Easy to integrate, Gohalt provides numbers of built in middlewares to have one line integrations with go stdlib and other libraries, besides those are: io, rpc/grpc, http, sql, gin, etc.
+- Blastly fast and efficient, Gohalt has minimal performance overhead, it was design with performance as primary goal.
+- Flexible and powerful, Gohalt supports numbers of different throttling strategies and conditions  that could be easily combined and customized to match your needs.
+- Easy to integrate, Gohalt provides numbers of built in  middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, etc.
 - Metrics awareness, Gohalt could use metrics as a conditions for throttling, currently Gohalt supports prometheus metrics.
 - Queueing and delayed processing, Gohalt supports throttling queueing which means you can easily save throttled query to rabbitmq/kafka stream to process it later.
 
@@ -139,12 +139,33 @@ func maxsearch(ctx context.Context, s searcher, topics []string, max uint64) (ur
 
 ## Throttlers
 
-
-## Contribution
-
-Do you have an idea to improve Gohalt? -> [Create an issue](https://github.com/1pkg/gohalt/issues/new/choose).  
-Have you discovered a bug? -> [Create an issue](https://github.com/1pkg/gohalt/issues/new/choose).  
-Have you already coded something for Gohalt? -> [Create a pull request](https://github.com/1pkg/gohalt/compare).
+| Throttler | Definition | Description |
+|---|---|---|
+| echo |  `NewThrottlerEcho(err error)` | Throttles specified error back. |
+| wait  | `NewThrottlerWait(duration time.Duration)`  | Waits (blocks) for static specified time duration. |
+| square | `NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool)`  | Waits (blocks) for (n^2) * specified time duration, up until specified time duration limit is riched. <br>If reset was specified after throttler riches specified time duration limit next wait time resets to n=1. |
+| panic | `NewThrottlerPanic()` | Just panics. |
+| each | `NewThrottlerEach(threshold uint64)` | Throttles each n-th specified threshold.  |
+| before | `NewThrottlerBefore(threshold uint64)` | Throttles only while specified threshold wasn't riched. |
+| chance | `NewThrottlerChance(threshold float64)` | Throttles with specified threshold chance.<br>Chance has to have value betweeen 0.0 and 1.0. |
+| after | `NewThrottlerAfter(threshold uint64)` | Throttles only after specified threshold wasn riched. |
+| running | `NewThrottlerRunning(threshold uint64)` | Throttles if current number of acquired - release > specified threshold number. |
+| buffered | `NewThrottlerBuffered(threshold uint64)` | Waits (blocks) if current number of acquired - release > specified threshold number. |
+| priority | `NewThrottlerPriority(threshold uint64, levels uint8)` | Waits (blocks) if current number of acquired - release > specified threshold number on specific priority level. Use  `WithPriority(ctx context.Context, priority uint8) context.Context` to override acquire default priority. |
+| timed | `NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration)` | Throttles if current number of acquired - release > specified threshold number in specified interval duration. Each specified interval duration current number of acquired will be reset. If quantum>0 then quantum interval will be used instead with quantized delta substraction. |
+| monitor | `NewThrottlerMonitor(mnt Monitor, threshold Stats)` | Throttles if Stats returned from Monitor exceed specified threshold Stats. |
+| metric | `NewThrottlerMetric(mtc Metric)` | Throttles if specified Metric was riched. |
+| latency | `NewThrottlerLatency(threshold time.Duration, retention time.Duration)` | Throttles if specified threshold latency duration was exceed. If specified retention duration > 0 then throttler will be reset after retention duration. |
+| percentile | `NewThrottlerPercentile(threshold time.Duration, percentile float64, retention time.Duration)` | Throttles if specified threshold latency duration percentile was exceed. If specified retention duration > 0 then throttler will be reset after retention duration. |
+| adaptive | `NewThrottlerAdaptive(threshold uint64, interval time.Duration, quantum time.Duration, step uint64, thr Throttler)` | Adaptive is timed throttler that uses specified step and additional throttler to adjust timed threshold. If adaptee throttler throttles specified timed threshold will go down by step*step otherwise it will go up by step. |
+| context | `NewThrottlerContext()` | Throttles on Done context. |
+| enqueuer | `NewThrottlerEnqueue(enq Enqueuer)` | Enqueues message to queue. |
+| pattern | `NewThrottlerPattern(patterns ...Pattern)` | Uses regex pattern match throttler. |
+| ring | `NewThrottlerRing(thrs ...Throttler)` | Uses next throttler from the ring buffer. |
+| all | `NewThrottlerAll(thrs ...Throttler)` | Throttles only if child throttlers throttled. |
+| any | `NewThrottlerAny(thrs ...Throttler)` | Throttles if any of child throttlers throttled. |
+| not | `NewThrottlerNot(thr Throttler)` | Throttles only if child throttler didn't throttle. |
+| suppress | `NewThrottlerSuppress(thr Throttler)` | Suppresses any child throttler. |
 
 ## Licence
 

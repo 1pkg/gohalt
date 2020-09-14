@@ -63,18 +63,18 @@ func (thr twait) Release(context.Context) error {
 	return nil
 }
 
-type tbackoff struct {
+type tsquare struct {
 	duration time.Duration
 	limit    time.Duration
 	current  uint64
 	reset    bool
 }
 
-func NewThrottlerBackoff(duration time.Duration, limit time.Duration, reset bool) *tbackoff {
-	return &tbackoff{duration: duration, limit: limit, reset: reset}
+func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) *tsquare {
+	return &tsquare{duration: duration, limit: limit, reset: reset}
 }
 
-func (thr *tbackoff) Acquire(context.Context) error {
+func (thr *tsquare) Acquire(context.Context) error {
 	current := atomicBIncr(&thr.current)
 	duration := thr.duration * time.Duration(current*current)
 	if duration > thr.limit {
@@ -87,7 +87,7 @@ func (thr *tbackoff) Acquire(context.Context) error {
 	return nil
 }
 
-func (thr *tbackoff) Release(context.Context) error {
+func (thr *tsquare) Release(context.Context) error {
 	return nil
 }
 
