@@ -25,12 +25,120 @@ Gohalt is simple and convenient yet powerful and fast throttling library for go.
 
 ## Concepts
 
+Gohalt uses `Throttler` as core interface for all derived throttlers.
 ```go
 type Throttler interface {
 	Acquire(context.Context) error
 	Release(context.Context) error
 }
 ```
+`Throttler` interface exposes pair of methods that make it usage similar to `sync.Mutex` - you need to acquire throttling quota right before shared resource use and release throttling quota just after shared resource use. **Note:** all derived throttler implementations are thread safe, so they could be used concurrently without additional locking. **Note:** generally all acquired throttlers should be released exatly the same amount of times they have been acquired.
+
+## Usage 
+
+For example we have next function that queries duckduckgo to get topic->url map: 
+```go
+func duckduckgo(ctx context.Context, q string) (string, error) {
+	var answer struct {
+		AbstractURL string `json:"AbstractURL"`
+	}
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+	resp, err := http.Get(fmt.Sprintf("http://api.duckduckgo.com/?q=%s&format=json", q))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if err := json.Unmarshal(body, &answer); err != nil {
+		return "", err
+	}
+	return answer.AbstractURL, nil
+}
+```
+
+And next search function to make range queries to duckduckgo searcher:
+
+```go
+type searcher func(ctx context.Context, q string) (string, error)
+
+func search(s searcher, topics []string) (urls []string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	urls = make([]string, 0, len(topics))
+	for _, topic := range topics {
+		select {
+		case <-ctx.Done():
+			return urls
+		default:
+		}
+		topic := topic
+		go func() {
+			url, err := s(ctx, topic)
+			if err != nil {
+				cancel()
+				return
+			}
+			urls = append(urls, url)
+		}()
+	}
+	return urls
+}
+```
+
+Now if we wanna add throttling quota to duckduckgo searcher to limit it to let's say 10 concurent queries at max we can use next code:
+
+```go
+func maxsearcher(s searcher, max uint64) searcher {
+	t := NewThrottlerRunning(max)
+	return func(ctx context.Context, q string) (string, error) {
+		if err := t.Acquire(ctx); err != nil {
+			return "", err
+		}
+		defer func() {
+			if err := t.Release(ctx); err != nil {
+				log.Print(err.Error())
+			}
+		}()
+		return s(ctx, q)
+	}
+}
+```
+
+Even better to use runner to handle all acquire/release code:
+
+```go
+func maxrunsearcher(s searcher, max uint64) searcher {
+	t := NewThrottlerBuffered(max)
+	return func(ctx context.Context, q string) (string, error) {
+		var result string
+		r := NewRunnerSync(ctx, t)
+		r.Run(func(ctx context.Context) (err error) {
+			result, err = s(ctx, q)
+			return
+		})
+		return result, r.Result()
+	}
+}
+```
+
+Or you can even add this throttler to context by using:
+
+```go
+func maxsearch(ctx context.Context, s searcher, topics []string, max uint64) (urls []string) {
+	ctx = WithThrottler(ctx, NewThrottlerRunning(max), time.Millisecond)
+	return search(ctx, s, topics)
+}
+```
+
+## Throttlers
+
 
 ## Contribution
 
