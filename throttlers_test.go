@@ -135,6 +135,20 @@ func TestThrottlers(t *testing.T) {
 				ms0_9,
 			},
 		},
+		"Throttler context should throttle on canceled context": {
+			tms: 3,
+			thr: NewThrottlerContext(),
+			ctxs: []context.Context{
+				cctx,
+				context.Background(),
+				cctx,
+			},
+			errs: []error{
+				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+				nil,
+				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+			},
+		},
 		"Throttler panic should panic": {
 			tms: 3,
 			thr: NewThrottlerPanic(),
@@ -168,6 +182,18 @@ func TestThrottlers(t *testing.T) {
 				nil,
 			},
 		},
+		"Throttler after should throttle after threshold": {
+			tms: 6,
+			thr: NewThrottlerAfter(3),
+			errs: []error{
+				nil,
+				nil,
+				nil,
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
+			},
+		},
 		"Throttler chance should throttle on 1": {
 			tms: 3,
 			thr: NewThrottlerChance(1),
@@ -189,18 +215,6 @@ func TestThrottlers(t *testing.T) {
 		"Throttler chance should not throttle on 0": {
 			tms: 3,
 			thr: NewThrottlerChance(0),
-		},
-		"Throttler after should throttle after threshold": {
-			tms: 6,
-			thr: NewThrottlerAfter(3),
-			errs: []error{
-				nil,
-				nil,
-				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
-			},
 		},
 		"Throttler running should throttle on threshold": {
 			tms: 3,
@@ -322,83 +336,6 @@ func TestThrottlers(t *testing.T) {
 				nil,
 			},
 		},
-		"Throttler monitor should throttle on internal stats error": {
-			tms: 3,
-			thr: NewThrottlerMonitor(
-				mntmock{err: errors.New("test")},
-				Stats{},
-			),
-			errs: []error{
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
-			},
-		},
-		"Throttler monitor should not throttle on stats below threshold": {
-			tms: 3,
-			thr: NewThrottlerMonitor(
-				mntmock{
-					stats: Stats{
-						MEMAlloc:  100,
-						MEMSystem: 1000,
-						CPUPause:  100,
-						CPUUsage:  0.1,
-					},
-				},
-				Stats{
-					MEMAlloc:  1000,
-					MEMSystem: 2000,
-					CPUPause:  500,
-					CPUUsage:  0.3,
-				},
-			),
-		},
-		"Throttler monitor should throttle on stats above threshold": {
-			tms: 3,
-			thr: NewThrottlerMonitor(
-				mntmock{
-					stats: Stats{
-						MEMAlloc:  500,
-						MEMSystem: 5000,
-						CPUPause:  500,
-						CPUUsage:  0.1,
-					},
-				},
-				Stats{
-					MEMAlloc:  1000,
-					MEMSystem: 2000,
-					CPUPause:  500,
-					CPUUsage:  0.3,
-				},
-			),
-			errs: []error{
-				errors.New("throttler has exceed stats threshold"),
-				errors.New("throttler has exceed stats threshold"),
-				errors.New("throttler has exceed stats threshold"),
-			},
-		},
-		"Throttler metric should throttle on internal metric error": {
-			tms: 3,
-			thr: NewThrottlerMetric(mtcmock{err: errors.New("test")}),
-			errs: []error{
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
-			},
-		},
-		"Throttler monitor should not throttle on metric below threshold": {
-			tms: 3,
-			thr: NewThrottlerMetric(mtcmock{metric: false}),
-		},
-		"Throttler monitor should throttle on metric above threshold": {
-			tms: 3,
-			thr: NewThrottlerMetric(mtcmock{metric: true}),
-			errs: []error{
-				errors.New("throttler has reached metric threshold"),
-				errors.New("throttler has reached metric threshold"),
-				errors.New("throttler has reached metric threshold"),
-			},
-		},
 		"Throttler latency should throttle on latency above threshold": {
 			tms: 3,
 			thr: NewThrottlerLatency(ms0_9, ms5_0),
@@ -490,43 +427,81 @@ func TestThrottlers(t *testing.T) {
 				errors.New("throttler has exceed latency threshold"),
 			},
 		},
-		"Throttler adaptive should throttle on throttling adoptee": {
+		"Throttler monitor should throttle on internal stats error": {
 			tms: 3,
-			thr: NewThrottlerAdaptive(
-				7,
-				ms2_0,
-				ms1_0,
-				2,
-				NewThrottlerEcho(errors.New("test")),
+			thr: NewThrottlerMonitor(
+				mntmock{err: errors.New("test")},
+				Stats{},
 			),
 			errs: []error{
-				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
+				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
 			},
 		},
-		"Throttler adaptive should not throttle on non throttling adoptee": {
+		"Throttler monitor should not throttle on stats below threshold": {
 			tms: 3,
-			thr: NewThrottlerAdaptive(
-				0,
-				ms2_0,
-				ms1_0,
-				1,
-				NewThrottlerEcho(nil),
+			thr: NewThrottlerMonitor(
+				mntmock{
+					stats: Stats{
+						MEMAlloc:  100,
+						MEMSystem: 1000,
+						CPUPause:  100,
+						CPUUsage:  0.1,
+					},
+				},
+				Stats{
+					MEMAlloc:  1000,
+					MEMSystem: 2000,
+					CPUPause:  500,
+					CPUUsage:  0.3,
+				},
 			),
 		},
-		"Throttler context should throttle on canceled context": {
+		"Throttler monitor should throttle on stats above threshold": {
 			tms: 3,
-			thr: NewThrottlerContext(),
-			ctxs: []context.Context{
-				cctx,
-				context.Background(),
-				cctx,
-			},
+			thr: NewThrottlerMonitor(
+				mntmock{
+					stats: Stats{
+						MEMAlloc:  500,
+						MEMSystem: 5000,
+						CPUPause:  500,
+						CPUUsage:  0.1,
+					},
+				},
+				Stats{
+					MEMAlloc:  1000,
+					MEMSystem: 2000,
+					CPUPause:  500,
+					CPUUsage:  0.3,
+				},
+			),
 			errs: []error{
-				fmt.Errorf("throttler has received context error %w", cctx.Err()),
-				nil,
-				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+				errors.New("throttler has exceed stats threshold"),
+				errors.New("throttler has exceed stats threshold"),
+				errors.New("throttler has exceed stats threshold"),
+			},
+		},
+		"Throttler metric should throttle on internal metric error": {
+			tms: 3,
+			thr: NewThrottlerMetric(mtcmock{err: errors.New("test")}),
+			errs: []error{
+				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
+				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
+			},
+		},
+		"Throttler metric should not throttle on metric below threshold": {
+			tms: 3,
+			thr: NewThrottlerMetric(mtcmock{metric: false}),
+		},
+		"Throttler metric should throttle on metric above threshold": {
+			tms: 3,
+			thr: NewThrottlerMetric(mtcmock{metric: true}),
+			errs: []error{
+				errors.New("throttler has reached metric threshold"),
+				errors.New("throttler has reached metric threshold"),
+				errors.New("throttler has reached metric threshold"),
 			},
 		},
 		"Throttler enqueue should throttle on internal message error": {
@@ -574,6 +549,31 @@ func TestThrottlers(t *testing.T) {
 				WithData(context.Background(), "test"),
 				WithData(context.Background(), "test"),
 			},
+		},
+		"Throttler adaptive should throttle on throttling adoptee": {
+			tms: 3,
+			thr: NewThrottlerAdaptive(
+				7,
+				ms2_0,
+				ms1_0,
+				2,
+				NewThrottlerEcho(errors.New("test")),
+			),
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
+			},
+		},
+		"Throttler adaptive should not throttle on non throttling adoptee": {
+			tms: 3,
+			thr: NewThrottlerAdaptive(
+				0,
+				ms2_0,
+				ms1_0,
+				1,
+				NewThrottlerEcho(nil),
+			),
 		},
 		"Throttler pattern should throttle on internal key error": {
 			tms: 3,

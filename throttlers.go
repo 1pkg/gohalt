@@ -90,6 +90,25 @@ func (thr *tsquare) Release(context.Context) error {
 	return nil
 }
 
+type tcontext struct{}
+
+func NewThrottlerContext() tcontext {
+	return tcontext{}
+}
+
+func (thr tcontext) Acquire(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("throttler has received context error %w", ctx.Err())
+	default:
+		return nil
+	}
+}
+
+func (thr tcontext) Release(ctx context.Context) error {
+	return nil
+}
+
 type tpanic struct{}
 
 func NewThrottlerPanic() tpanic {
@@ -144,6 +163,26 @@ func (thr *tbefore) Release(context.Context) error {
 	return nil
 }
 
+type tafter struct {
+	current   uint64
+	threshold uint64
+}
+
+func NewThrottlerAfter(threshold uint64) *tafter {
+	return &tafter{threshold: threshold}
+}
+
+func (thr *tafter) Acquire(context.Context) error {
+	if current := atomicBIncr(&thr.current); current > thr.threshold {
+		return errors.New("throttler has exceed threshold")
+	}
+	return nil
+}
+
+func (thr *tafter) Release(context.Context) error {
+	return nil
+}
+
 type tchance struct {
 	threshold float64
 }
@@ -164,26 +203,6 @@ func (thr tchance) Acquire(context.Context) error {
 }
 
 func (thr tchance) Release(context.Context) error {
-	return nil
-}
-
-type tafter struct {
-	current   uint64
-	threshold uint64
-}
-
-func NewThrottlerAfter(threshold uint64) *tafter {
-	return &tafter{threshold: threshold}
-}
-
-func (thr *tafter) Acquire(context.Context) error {
-	if current := atomicBIncr(&thr.current); current > thr.threshold {
-		return errors.New("throttler has exceed threshold")
-	}
-	return nil
-}
-
-func (thr *tafter) Release(context.Context) error {
 	return nil
 }
 
@@ -271,9 +290,7 @@ func (thr tpriority) Release(ctx context.Context) error {
 
 type ttimed struct {
 	*tafter
-	loop     Runnable
-	interval time.Duration
-	quantum  time.Duration
+	loop Runnable
 }
 
 func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) ttimed {
@@ -283,7 +300,7 @@ func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Du
 		delta = uint64(math.Ceil(float64(threshold) / (float64(interval) / float64(quantum))))
 		window = quantum
 	}
-	thr := ttimed{tafter: tafter, interval: interval, quantum: quantum}
+	thr := ttimed{tafter: tafter}
 	thr.loop = once(
 		loop(window, func(ctx context.Context) error {
 			atomicBSub(&thr.current, delta)
@@ -305,6 +322,81 @@ func (thr ttimed) Acquire(ctx context.Context) error {
 
 func (thr ttimed) Release(ctx context.Context) error {
 	return thr.tafter.Release(ctx)
+}
+
+type tlatency struct {
+	reset     Runnable
+	latency   uint64
+	threshold time.Duration
+}
+
+func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
+	thr := &tlatency{threshold: threshold}
+	thr.reset = delayed(retention, func(context.Context) error {
+		atomicSet(&thr.latency, 0)
+		return nil
+	})
+	return thr
+}
+
+func (thr *tlatency) Acquire(context.Context) error {
+	if latency := atomicGet(&thr.latency); latency > uint64(thr.threshold) {
+		return errors.New("throttler has exceed latency threshold")
+	}
+	return nil
+}
+
+func (thr *tlatency) Release(ctx context.Context) error {
+	nowTs := time.Now().UTC().UnixNano()
+	ctxTs := ctxTimestamp(ctx).UnixNano()
+	latency := uint64(nowTs - ctxTs)
+	if latency >= uint64(thr.threshold) && atomicGet(&thr.latency) == 0 {
+		atomicSet(&thr.latency, latency)
+		gorun(ctx, thr.reset)
+	}
+	return nil
+}
+
+type tpercentile struct {
+	reset      Runnable
+	latencies  *percentiles
+	threshold  time.Duration
+	percentile float64
+}
+
+func NewThrottlerPercentile(threshold time.Duration, capacity uint8, percentile float64, retention time.Duration) tpercentile {
+	percentile = math.Abs(percentile)
+	if percentile > 1.0 {
+		percentile = 1.0
+	}
+	thr := tpercentile{threshold: threshold, percentile: percentile}
+	thr.latencies = &percentiles{cap: capacity}
+	thr.latencies.Prune()
+	thr.reset = locked(
+		delayed(retention, func(context.Context) error {
+			thr.latencies.Prune()
+			return nil
+		}),
+	)
+	return thr
+}
+
+func (thr tpercentile) Acquire(ctx context.Context) error {
+	if thr.latencies.Len() > 0 {
+		if latency := thr.latencies.At(thr.percentile); latency >= uint64(thr.threshold) {
+			gorun(ctx, thr.reset)
+			return errors.New("throttler has exceed latency threshold")
+		}
+	}
+	return nil
+}
+
+func (thr tpercentile) Release(ctx context.Context) error {
+	nowTs := time.Now().UTC().UnixNano()
+	ctxTs := ctxTimestamp(ctx).UnixNano()
+	latency := uint64(nowTs - ctxTs)
+	thr.latencies.Push(latency)
+	return nil
 }
 
 type tmonitor struct {
@@ -355,80 +447,30 @@ func (thr tmetric) Release(context.Context) error {
 	return nil
 }
 
-type tlatency struct {
-	reset     Runnable
-	latency   uint64
-	threshold time.Duration
-	retention time.Duration
+type tenqueue struct {
+	enq Enqueuer
 }
 
-func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
-	thr := &tlatency{threshold: threshold, retention: retention}
-	thr.reset = delayed(retention, func(context.Context) error {
-		atomicSet(&thr.latency, 0)
-		return nil
-	})
-	return thr
+func NewThrottlerEnqueue(enq Enqueuer) tenqueue {
+	return tenqueue{enq: enq}
 }
 
-func (thr *tlatency) Acquire(context.Context) error {
-	if latency := atomicGet(&thr.latency); latency > uint64(thr.threshold) {
-		return errors.New("throttler has exceed latency threshold")
+func (thr tenqueue) Acquire(ctx context.Context) error {
+	marshaler, data := ctxMarshaler(ctx), ctxData(ctx)
+	if marshaler == nil || data == nil {
+		return errors.New("throttler hasn't found any message")
+	}
+	message, err := marshaler(data)
+	if err != nil {
+		return fmt.Errorf("throttler hasn't sent any message %w", err)
+	}
+	if err := thr.enq.Enqueue(ctx, message); err != nil {
+		return fmt.Errorf("throttler hasn't sent any message %w", err)
 	}
 	return nil
 }
 
-func (thr *tlatency) Release(ctx context.Context) error {
-	nowTs := time.Now().UTC().UnixNano()
-	ctxTs := ctxTimestamp(ctx).UnixNano()
-	latency := uint64(nowTs - ctxTs)
-	if latency >= uint64(thr.threshold) && atomicGet(&thr.latency) == 0 {
-		atomicSet(&thr.latency, latency)
-		gorun(ctx, thr.reset)
-	}
-	return nil
-}
-
-type tpercentile struct {
-	reset      Runnable
-	latencies  *percentiles
-	threshold  time.Duration
-	percentile float64
-	retention  time.Duration
-}
-
-func NewThrottlerPercentile(threshold time.Duration, capacity uint8, percentile float64, retention time.Duration) tpercentile {
-	percentile = math.Abs(percentile)
-	if percentile > 1.0 {
-		percentile = 1.0
-	}
-	thr := tpercentile{threshold: threshold, percentile: percentile, retention: retention}
-	thr.latencies = &percentiles{cap: capacity}
-	thr.latencies.Prune()
-	thr.reset = locked(
-		delayed(thr.retention, func(context.Context) error {
-			thr.latencies.Prune()
-			return nil
-		}),
-	)
-	return thr
-}
-
-func (thr tpercentile) Acquire(ctx context.Context) error {
-	if thr.latencies.Len() > 0 {
-		if latency := thr.latencies.At(thr.percentile); latency >= uint64(thr.threshold) {
-			gorun(ctx, thr.reset)
-			return errors.New("throttler has exceed latency threshold")
-		}
-	}
-	return nil
-}
-
-func (thr tpercentile) Release(ctx context.Context) error {
-	nowTs := time.Now().UTC().UnixNano()
-	ctxTs := ctxTimestamp(ctx).UnixNano()
-	latency := uint64(nowTs - ctxTs)
-	thr.latencies.Push(latency)
+func (thr tenqueue) Release(ctx context.Context) error {
 	return nil
 }
 
@@ -464,52 +506,6 @@ func (thr *tadaptive) Acquire(ctx context.Context) error {
 
 func (thr tadaptive) Release(ctx context.Context) error {
 	return thr.ttimed.Release(ctx)
-}
-
-type tcontext struct{}
-
-func NewThrottlerContext() tcontext {
-	return tcontext{}
-}
-
-func (thr tcontext) Acquire(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("throttler has received context error %w", ctx.Err())
-	default:
-		return nil
-	}
-}
-
-func (thr tcontext) Release(ctx context.Context) error {
-	return nil
-}
-
-type tenqueue struct {
-	enq Enqueuer
-}
-
-func NewThrottlerEnqueue(enq Enqueuer) tenqueue {
-	return tenqueue{enq: enq}
-}
-
-func (thr tenqueue) Acquire(ctx context.Context) error {
-	marshaler, data := ctxMarshaler(ctx), ctxData(ctx)
-	if marshaler == nil || data == nil {
-		return errors.New("throttler hasn't found any message")
-	}
-	message, err := marshaler(data)
-	if err != nil {
-		return fmt.Errorf("throttler hasn't sent any message %w", err)
-	}
-	if err := thr.enq.Enqueue(ctx, message); err != nil {
-		return fmt.Errorf("throttler hasn't sent any message %w", err)
-	}
-	return nil
-}
-
-func (thr tenqueue) Release(ctx context.Context) error {
-	return nil
 }
 
 type Pattern struct {
