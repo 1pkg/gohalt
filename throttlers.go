@@ -524,22 +524,18 @@ func NewThrottlerPattern(patterns ...Pattern) tpattern {
 }
 
 func (thr tpattern) Acquire(ctx context.Context) error {
-	if key := ctxKey(ctx); key != nil {
-		for _, pattern := range thr {
-			if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
-				return pattern.Throttler.Acquire(ctx)
-			}
+	for _, pattern := range thr {
+		if key := ctxKey(ctx); pattern.Pattern.MatchString(key) {
+			return pattern.Throttler.Acquire(ctx)
 		}
 	}
 	return errors.New("throttler hasn't found any key")
 }
 
 func (thr tpattern) Release(ctx context.Context) error {
-	if key := ctxKey(ctx); key != nil {
-		for _, pattern := range thr {
-			if str, ok := key.(string); ok && pattern.Pattern.MatchString(str) {
-				return pattern.Throttler.Release(ctx)
-			}
+	for _, pattern := range thr {
+		if key := ctxKey(ctx); pattern.Pattern.MatchString(key) {
+			return pattern.Throttler.Release(ctx)
 		}
 	}
 	return nil

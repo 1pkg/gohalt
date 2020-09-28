@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func ip(req *http.Request) interface{} {
+func ip(req *http.Request) string {
 	first := func(ip string) string {
 		return strings.TrimSpace(strings.Split(ip, ",")[0])
 	}

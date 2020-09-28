@@ -563,7 +563,7 @@ func TestThrottlers(t *testing.T) {
 			thr: NewThrottlerPattern(),
 			ctxs: []context.Context{
 				context.Background(),
-				WithKey(context.Background(), 125),
+				WithKey(context.Background(), ""),
 				WithKey(context.Background(), "test"),
 			},
 			errs: []error{
@@ -586,7 +586,7 @@ func TestThrottlers(t *testing.T) {
 			),
 			ctxs: []context.Context{
 				context.Background(),
-				WithKey(context.Background(), 125),
+				WithKey(context.Background(), "125"),
 				WithKey(context.Background(), "test"),
 				WithKey(context.Background(), "nontest"),
 				WithKey(context.Background(), "non"),
