@@ -16,3 +16,5 @@ jobs:
         uses: actions/checkout@v2
       - name: test
         run: go test -v -race -count=1 -coverprofile test.cover ./...
+        with:
+          max_attempts: 3
