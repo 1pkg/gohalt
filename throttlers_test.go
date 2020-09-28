@@ -434,7 +434,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler percentile should throttle on latency above threshold": {
 			tms: 5,
-			thr: NewThrottlerPercentile(ms3_0, 0.5, ms7_0),
+			thr: NewThrottlerPercentile(ms3_0, 10, 0.5, ms7_0),
 			tss: []time.Duration{
 				ms0_0,
 				-ms5_0,
@@ -451,7 +451,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler percentile should throttle on latency above threshold after retention": {
 			tms: 5,
-			thr: NewThrottlerPercentile(ms3_0, 1.5, ms5_0),
+			thr: NewThrottlerPercentile(ms3_0, 10, 1.5, ms5_0),
 			tss: []time.Duration{
 				ms0_0,
 				-ms5_0,
@@ -471,6 +471,23 @@ func TestThrottlers(t *testing.T) {
 				errors.New("throttler has exceed latency threshold"),
 				errors.New("throttler has exceed latency threshold"),
 				nil,
+			},
+		},
+		"Throttler percentile should throttle on latency above threshold with capacity": {
+			tms: 5,
+			thr: NewThrottlerPercentile(ms3_0, 1, 0.5, ms7_0),
+			tss: []time.Duration{
+				ms0_0,
+				-ms5_0,
+				-ms1_0,
+				-ms5_0,
+			},
+			errs: []error{
+				nil,
+				nil,
+				errors.New("throttler has exceed latency threshold"),
+				nil,
+				errors.New("throttler has exceed latency threshold"),
 			},
 		},
 		"Throttler adaptive should throttle on throttling adoptee": {
