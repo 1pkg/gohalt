@@ -41,12 +41,15 @@ func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	return 1
 }
 
-func WithKey(ctx context.Context, key interface{}) context.Context {
+func WithKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, ghctxkey, key)
 }
 
-func ctxKey(ctx context.Context) interface{} {
-	return ctx.Value(ghctxkey)
+func ctxKey(ctx context.Context) string {
+	if val, ok := ctx.Value(ghctxkey).(string); ok {
+		return val
+	}
+	return ""
 }
 
 func WithData(ctx context.Context, data interface{}) context.Context {
@@ -74,7 +77,7 @@ func WithParams(
 	ctx context.Context,
 	ts time.Time,
 	priority uint8,
-	key interface{},
+	key string,
 	data interface{},
 	marshaler Marshaler,
 ) context.Context {
