@@ -1,7 +1,6 @@
 package gohalt
 
 import (
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -392,18 +391,20 @@ func (thr *tlatency) Release(ctx context.Context) error {
 
 type tpercentile struct {
 	reset      Runnable
-	latencies  *blatheap
+	latencies  *percentiles
 	threshold  time.Duration
 	percentile float64
 	retention  time.Duration
 }
 
-func NewThrottlerPercentile(threshold time.Duration, percentile float64, retention time.Duration) tpercentile {
+func NewThrottlerPercentile(threshold time.Duration, capacity uint8, percentile float64, retention time.Duration) tpercentile {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
 	}
-	thr := tpercentile{latencies: &blatheap{}, threshold: threshold, percentile: percentile, retention: retention}
+	thr := tpercentile{threshold: threshold, percentile: percentile, retention: retention}
+	thr.latencies = &percentiles{cap: capacity}
+	thr.latencies.Prune()
 	thr.reset = locked(
 		delayed(thr.retention, func(context.Context) error {
 			thr.latencies.Prune()
@@ -414,9 +415,8 @@ func NewThrottlerPercentile(threshold time.Duration, percentile float64, retenti
 }
 
 func (thr tpercentile) Acquire(ctx context.Context) error {
-	if length := thr.latencies.Len(); length > 0 {
-		at := int(math.Round(float64(length-1) * thr.percentile))
-		if latency := thr.latencies.At(at); latency >= uint64(thr.threshold) {
+	if thr.latencies.Len() > 0 {
+		if latency := thr.latencies.At(thr.percentile); latency >= uint64(thr.threshold) {
 			gorun(ctx, thr.reset)
 			return errors.New("throttler has exceed latency threshold")
 		}
@@ -428,7 +428,7 @@ func (thr tpercentile) Release(ctx context.Context) error {
 	nowTs := time.Now().UTC().UnixNano()
 	ctxTs := ctxTimestamp(ctx).UnixNano()
 	latency := uint64(nowTs - ctxTs)
-	heap.Push(thr.latencies, latency)
+	thr.latencies.Push(latency)
 	return nil
 }
 
