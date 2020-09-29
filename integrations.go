@@ -195,7 +195,7 @@ func RouterOnAbort(w http.ResponseWriter, err error) {
 	StdOnAbort(w, err)
 }
 
-func NewMiddlewareRouter(h http.Handler, thr Throttler, with MuxWith, on MuxOn) http.Handler {
+func NewMiddlewareRouter(h http.Handler, thr Throttler, with RouterWith, on RouterOn) http.Handler {
 	return NewMiddlewareStd(h, thr, StdWith(with), StdOn(on))
 }
 
