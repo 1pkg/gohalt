@@ -95,7 +95,7 @@ type ctxthr struct {
 	freq time.Duration
 }
 
-func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) context.Context {
+func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) ctxthr {
 	return ctxthr{Context: ctx, thr: thr, freq: freq}
 }
 
@@ -121,4 +121,8 @@ func (ctx ctxthr) Err() (err error) {
 	r := NewRunnerSync(ctx.Context, ctx.thr)
 	r.Run(nope)
 	return r.Result()
+}
+
+func (ctx ctxthr) Throttler() Throttler {
+	return ctx.thr
 }

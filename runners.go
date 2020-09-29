@@ -31,6 +31,12 @@ func NewRunnerSync(ctx context.Context, thr Throttler) *rsync {
 }
 
 func (r *rsync) Run(run Runnable) {
+	select {
+	case <-r.ctx.Done():
+		r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+		return
+	default:
+	}
 	defer func() {
 		if err := r.thr.Release(r.ctx); err != nil {
 			r.report(fmt.Errorf("throttler error has happened %w", err))
@@ -82,11 +88,17 @@ func NewRunnerAsync(ctx context.Context, thr Throttler) *rasync {
 func (r *rasync) Run(run Runnable) {
 	r.wg.Add(1)
 	go func() {
+		defer r.wg.Done()
+		select {
+		case <-r.ctx.Done():
+			r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+			return
+		default:
+		}
 		defer func() {
 			if err := r.thr.Release(r.ctx); err != nil {
 				r.report(fmt.Errorf("throttler error has happened %w", err))
 			}
-			r.wg.Done()
 		}()
 		if err := r.thr.Acquire(r.ctx); err != nil {
 			r.report(fmt.Errorf("throttler error has happened %w", err))
