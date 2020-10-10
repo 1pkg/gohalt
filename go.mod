@@ -4,13 +4,9 @@ go 1.14
 
 require (
 	github.com/CloudyKit/jet/v3 v3.0.1 // indirect
-	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/astaxie/beego v1.12.2
-	github.com/dgraph-io/badger/v2 v2.2007.2
-	github.com/dgraph-io/ristretto v0.0.3 // indirect
-	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/fasthttp-contrib/websocket v0.0.0-20160511215533-1f3b11f56072 // indirect
 	github.com/frankban/quicktest v1.11.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
