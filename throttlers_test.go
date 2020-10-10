@@ -12,15 +12,18 @@ import (
 )
 
 const (
-	ms0_0 time.Duration = 0
-	ms0_9 time.Duration = time.Duration(0.9 * float64(time.Millisecond))
-	ms1_0 time.Duration = time.Millisecond
-	ms2_0 time.Duration = 2 * time.Millisecond
-	ms3_0 time.Duration = 3 * time.Millisecond
-	ms4_0 time.Duration = 4 * time.Millisecond
-	ms5_0 time.Duration = 5 * time.Millisecond
-	ms7_0 time.Duration = 7 * time.Millisecond
-	ms9_0 time.Duration = 9 * time.Millisecond
+	ms0_0   time.Duration = 0
+	ms0_9   time.Duration = time.Duration(0.9 * float64(1*time.Millisecond))
+	ms1_0   time.Duration = 1 * time.Millisecond
+	ms2_0   time.Duration = 2 * time.Millisecond
+	ms3_0   time.Duration = 3 * time.Millisecond
+	ms4_0   time.Duration = 4 * time.Millisecond
+	ms5_0   time.Duration = 5 * time.Millisecond
+	ms7_0   time.Duration = 7 * time.Millisecond
+	ms9_0   time.Duration = 9 * time.Millisecond
+	ms100_0 time.Duration = 100 * time.Millisecond
+	ms200_0 time.Duration = 200 * time.Millisecond
+	ms300_0 time.Duration = 300 * time.Millisecond
 )
 
 type tcase struct {
@@ -37,6 +40,7 @@ type tcase struct {
 }
 
 func (t *tcase) run(index int) (err error, dur time.Duration) {
+	fmt.Println("INDEX", index)
 	// get context with fallback
 	ctx := context.Background()
 	if index < len(t.ctxs) {
@@ -51,9 +55,9 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 	var ts time.Time
 	// try catch panic into error
 	func() {
+		defer atomicIncr(&t.idx)
 		defer func() {
 			if msg := recover(); msg != nil {
-				atomicIncr(&t.idx)
 				err = errors.New(msg.(string))
 			}
 		}()
@@ -67,17 +71,17 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 			ctx = WithTimestamp(ctx, time.Now().Add(t.tss[index]))
 		}
 		err = t.thr.Acquire(ctx)
-		atomicIncr(&t.idx)
 	}()
 	dur = time.Since(ts)
 	// run additional action only if present
 	if index < len(t.acts) {
 		if act := t.acts[index]; act != nil {
+			fmt.Println("ACT")
 			_ = act(ctx)
 		}
 	}
 	limit := 1
-	if t.over { // imitate over releasing
+	if t.over && uint64(index+1) == t.tms { // imitate over releasing on last call
 		limit = index + 1
 	}
 	for i := 0; i < limit; i++ {
@@ -220,9 +224,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
 			acts: []Runnable{
-				delayed(ms3_0, nope),
-				delayed(ms3_0, nope),
-				delayed(ms3_0, nope),
+				delayed(ms100_0, nope),
+				delayed(ms100_0, nope),
+				delayed(ms100_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -265,9 +269,13 @@ func TestThrottlers(t *testing.T) {
 			tms: 7,
 			thr: NewThrottlerPriority(5, 2),
 			acts: []Runnable{
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
+				delayed(ms300_0, nope),
 			},
 			ctxs: []context.Context{
 				WithPriority(context.Background(), 1),
@@ -281,11 +289,11 @@ func TestThrottlers(t *testing.T) {
 			durs: []time.Duration{
 				0,
 				0,
-				ms0_9,
+				ms200_0,
 				0,
 				0,
 				0,
-				ms0_9,
+				ms200_0,
 			},
 		},
 		"Throttler timed should throttle after threshold": {
