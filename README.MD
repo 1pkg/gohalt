@@ -73,9 +73,26 @@ If internal context throttler is throttling context done chanel will be closed r
 
 [godoc](https://pkg.go.dev/github.com/1pkg/gohalt?tab=doc)
 
-## Usage 
-
-TODO
+```go
+	// complex throttler example
+	thr := NewThrottlerAll( // throttles only if all children throttle
+		NewThrottlerPattern(
+			Pattern{ // use throttler only if provided key matches `192.*.*.*` submask
+				Pattern: regexp.MustCompile(`192\.[0-9]+\.[0-9]+\.[0-9]+`),
+				Throttler: NewThrottlerAny( // throttles if any children throttles
+					// throttles only if latency is above 50 millisecond
+					NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
+					// throttles only if cpu usage is above 70%
+					NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{CPUUsage: 0.7}),
+				),
+			},
+		),
+		// throttles each not 3rd call
+		NewThrottlerNot(NewThrottlerEach(3)),
+		// enqueues provided message to queue
+		NewThrottlerEnqueue(NewEnqueuerRabbit("amqp://user:pass@localhost:5672/vhost", "queue", time.Minute)),
+	)
+```
 
 ## Throttlers
 
@@ -96,12 +113,12 @@ TODO
 | timed | `func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) Throttler` | Throttles each call which exeeds the running quota *acquired - release* *q* defined by the specified threshold in the specified interval.<br> Periodically each specified interval the running quota number is reseted.<br> If quantum is set then quantum will be used instead of interval to provide the running quota delta updates. |
 | latency | `func NewThrottlerLatency(threshold time.Duration, retention time.Duration) Throttler` | Throttles each call after the call latency *l* defined by the specified threshold was exeeded once.<br> If retention is set then throttler state will be reseted after retention duration.<br> Use `func WithTimestamp(ctx context.Context, ts time.Time) context.Context` to specify running duration between throttler *acquire* and *release*. |
 | percentile | `func NewThrottlerPercentile(threshold time.Duration, capacity uint8, percentile float64, retention time.Duration) Throttler` | Throttles each call after the call latency *l* defined by the specified threshold was exeeded once considering the specified percentile.<br> Percentile values are kept in bounded buffer with capacity *c* defined by the specified capacity. <br> If retention is set then throttler state will be reseted after retention duration.<br> Use `func WithTimestamp(ctx context.Context, ts time.Time) context.Context` to specify running duration between throttler *acquire* and *release*. |
-| monitor | `func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler` | Throttles call if any of the stats returned by the provided monitor exceeds any of the stats defined by the specified threshold or if any internal error occurred. |
+| monitor | `func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler` | Throttles call if any of the stats returned by provided monitor exceeds any of the stats defined by the specified threshold or if any internal error occurred. |
 | metric | `func NewThrottlerMetric(mtc Metric) Throttler` | Throttles call if metric defined by the specified metric is riched or if any internal error occurred. |
 | enqueuer | `func NewThrottlerEnqueue(enq Enqueuer) Throttler` | Always enqueues message to the specified queue throttles only if any internal error occurred.<br> Use `func WithData(ctx context.Context, data interface{}) context.Context` to specify context data for enqueued message and `WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context` to specify context data marshaler. |
 | adaptive | `func NewThrottlerAdaptive(threshold uint64, interval time.Duration, quantum time.Duration, step uint64, thr Throttler) Throttler` | Throttles each call which exeeds the running quota *acquired - release* *q* defined by the specified threshold in the specified interval.<br> Periodically each specified interval the running quota number is reseted.<br> If quantum is set then quantum will be used instead of interval to provide the running quota delta updates.<br> Provided adapted throttler adjusts the running quota of adapter throttler by changing the value by *d* defined by the specified step, it subtracts *d^2* from the running quota if adapted throttler throttles or adds *d* to the running quota if it doesn't. |
 | pattern | `func NewThrottlerPattern(patterns ...Pattern) Throttler` | Throttles if matching throttler from provided patterns throttles.<br> Use `func WithKey(ctx context.Context, key string) context.Context` to specify key for regexp pattern throttler matching.<br> `Pattern` defines a pair of regexp and related throttler. |
-| ring | `func NewThrottlerRing(thrs ...Throttler) Throttler` | Throttles if the *i-th* call throttler from the provided list throttle. |
+| ring | `func NewThrottlerRing(thrs ...Throttler) Throttler` | Throttles if the *i-th* call throttler from provided list throttle. |
 | all | `func NewThrottlerAll(thrs ...Throttler) Throttler` | Throttles call if all provided throttlers throttle. |
 | any | `func NewThrottlerAny(thrs ...Throttler) Throttler` | Throttles call if any of provided throttlers throttle. |
 | not | `func NewThrottlerNot(thr Throttler) Throttler` | Throttles call if provided throttler doesn't throttle. |

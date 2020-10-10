@@ -18,4 +18,5 @@ jobs:
         uses: nick-invision/retry@v1
         with:
           max_attempts: 3
+          timeout_minutes: 10
           command: go test -v -race -count=1 -coverprofile test.cover ./...
