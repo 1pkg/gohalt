@@ -216,7 +216,6 @@ func NewThrottlerRunning(threshold uint64) *trunning {
 }
 
 func (thr *trunning) Acquire(context.Context) error {
-	fmt.Println("Acquire")
 	if running := atomicBIncr(&thr.running); running > thr.threshold {
 		return errors.New("throttler has exceed running threshold")
 	}
@@ -224,7 +223,6 @@ func (thr *trunning) Acquire(context.Context) error {
 }
 
 func (thr *trunning) Release(context.Context) error {
-	fmt.Println("Release")
 	atomicBDecr(&thr.running)
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,18 +13,15 @@ import (
 )
 
 const (
-	ms0_0   time.Duration = 0
-	ms0_9   time.Duration = time.Duration(0.9 * float64(1*time.Millisecond))
-	ms1_0   time.Duration = 1 * time.Millisecond
-	ms2_0   time.Duration = 2 * time.Millisecond
-	ms3_0   time.Duration = 3 * time.Millisecond
-	ms4_0   time.Duration = 4 * time.Millisecond
-	ms5_0   time.Duration = 5 * time.Millisecond
-	ms7_0   time.Duration = 7 * time.Millisecond
-	ms9_0   time.Duration = 9 * time.Millisecond
-	ms100_0 time.Duration = 100 * time.Millisecond
-	ms200_0 time.Duration = 200 * time.Millisecond
-	ms300_0 time.Duration = 300 * time.Millisecond
+	ms0_0 time.Duration = 0
+	ms0_9 time.Duration = time.Duration(0.9 * float64(1*time.Millisecond))
+	ms1_0 time.Duration = 1 * time.Millisecond
+	ms2_0 time.Duration = 2 * time.Millisecond
+	ms3_0 time.Duration = 3 * time.Millisecond
+	ms4_0 time.Duration = 4 * time.Millisecond
+	ms5_0 time.Duration = 5 * time.Millisecond
+	ms7_0 time.Duration = 7 * time.Millisecond
+	ms9_0 time.Duration = 9 * time.Millisecond
 )
 
 type tcase struct {
@@ -40,7 +38,6 @@ type tcase struct {
 }
 
 func (t *tcase) run(index int) (err error, dur time.Duration) {
-	fmt.Println("INDEX", index)
 	// get context with fallback
 	ctx := context.Background()
 	if index < len(t.ctxs) {
@@ -76,7 +73,6 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 	// run additional action only if present
 	if index < len(t.acts) {
 		if act := t.acts[index]; act != nil {
-			fmt.Println("ACT")
 			_ = act(ctx)
 		}
 	}
@@ -224,9 +220,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
 			acts: []Runnable{
-				delayed(ms100_0, nope),
-				delayed(ms100_0, nope),
-				delayed(ms100_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -269,13 +265,13 @@ func TestThrottlers(t *testing.T) {
 			tms: 7,
 			thr: NewThrottlerPriority(5, 2),
 			acts: []Runnable{
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
-				delayed(ms300_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
 			},
 			ctxs: []context.Context{
 				WithPriority(context.Background(), 1),
@@ -289,11 +285,11 @@ func TestThrottlers(t *testing.T) {
 			durs: []time.Duration{
 				0,
 				0,
-				ms200_0,
+				ms0_9,
 				0,
 				0,
 				0,
-				ms200_0,
+				ms0_9,
 			},
 		},
 		"Throttler timed should throttle after threshold": {
@@ -754,19 +750,22 @@ func TestThrottlers(t *testing.T) {
 			thr: NewThrottlerSuppress(NewThrottlerEcho(nil)),
 		},
 	}
-	for tname, tcase := range table {
+	for tname, ptrtcase := range table {
 		t.Run(tname, func(t *testing.T) {
-			var index uint64
-			for i := 0; i < int(tcase.tms); i++ {
+			var wg sync.WaitGroup
+			wg.Add(int(ptrtcase.tms))
+			for i := 0; i < int(ptrtcase.tms); i++ {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
-					t.Parallel()
-					index := int(atomicIncr(&index) - 1)
-					resErr, resDur := tcase.result(index)
-					err, dur := tcase.run(index)
-					assert.Equal(t, resErr, err)
-					assert.LessOrEqual(t, int64(resDur/2), int64(dur))
+					go func(t *testing.T, index int, tcase *tcase) {
+						defer wg.Done()
+						resErr, resDur := tcase.result(index)
+						err, dur := tcase.run(index)
+						assert.Equal(t, resErr, err)
+						assert.LessOrEqual(t, int64(resDur/2), int64(dur))
+					}(t, i, &ptrtcase)
 				})
 			}
+			wg.Wait()
 		})
 	}
 }
