@@ -220,9 +220,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
 			acts: []Runnable{
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -456,6 +456,20 @@ func TestThrottlers(t *testing.T) {
 					CPUPause:  500,
 					CPUUsage:  0.3,
 				},
+			),
+		},
+		"Throttler monitor should not throttle on stats above threshold nil stats": {
+			tms: 3,
+			thr: NewThrottlerMonitor(
+				mntmock{
+					stats: Stats{
+						MEMAlloc:  500,
+						MEMSystem: 5000,
+						CPUPause:  500,
+						CPUUsage:  0.1,
+					},
+				},
+				Stats{},
 			),
 		},
 		"Throttler monitor should throttle on stats above threshold": {

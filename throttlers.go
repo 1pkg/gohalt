@@ -413,8 +413,10 @@ func (thr tmonitor) Acquire(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("throttler hasn't found any stats %w", err)
 	}
-	if stats.MEMAlloc >= thr.threshold.MEMAlloc || stats.MEMSystem >= thr.threshold.MEMSystem ||
-		stats.CPUPause >= thr.threshold.CPUPause || stats.CPUUsage >= thr.threshold.CPUUsage {
+	if (thr.threshold.MEMAlloc > 0 && stats.MEMAlloc >= thr.threshold.MEMAlloc) ||
+		(thr.threshold.MEMSystem > 0 && stats.MEMSystem >= thr.threshold.MEMSystem) ||
+		(thr.threshold.CPUPause > 0 && stats.CPUPause >= thr.threshold.CPUPause) ||
+		(thr.threshold.CPUUsage > 0 && stats.CPUUsage >= thr.threshold.CPUUsage) {
 		return errors.New("throttler has exceed stats threshold")
 	}
 	return nil
