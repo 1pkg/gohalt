@@ -13,15 +13,16 @@ import (
 )
 
 const (
-	ms0_0 time.Duration = 0
-	ms0_9 time.Duration = time.Duration(0.9 * float64(1*time.Millisecond))
-	ms1_0 time.Duration = 1 * time.Millisecond
-	ms2_0 time.Duration = 2 * time.Millisecond
-	ms3_0 time.Duration = 3 * time.Millisecond
-	ms4_0 time.Duration = 4 * time.Millisecond
-	ms5_0 time.Duration = 5 * time.Millisecond
-	ms7_0 time.Duration = 7 * time.Millisecond
-	ms9_0 time.Duration = 9 * time.Millisecond
+	ms0_0  time.Duration = 0
+	ms0_9  time.Duration = time.Duration(0.9 * float64(1*time.Millisecond))
+	ms1_0  time.Duration = 1 * time.Millisecond
+	ms2_0  time.Duration = 2 * time.Millisecond
+	ms3_0  time.Duration = 3 * time.Millisecond
+	ms4_0  time.Duration = 4 * time.Millisecond
+	ms5_0  time.Duration = 5 * time.Millisecond
+	ms7_0  time.Duration = 7 * time.Millisecond
+	ms9_0  time.Duration = 9 * time.Millisecond
+	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
 type tcase struct {
@@ -125,8 +126,24 @@ func TestThrottlers(t *testing.T) {
 			},
 		},
 		"Throttler square should sleep for correct time periods": {
+			tms: 3,
+			thr: NewThrottlerSquare(ms1_0, 0, false),
+			durs: []time.Duration{
+				ms0_9,
+				ms0_9,
+				ms0_9,
+			},
+		},
+		"Throttler square should sleep for correct time periods with reset": {
 			tms: 5,
 			thr: NewThrottlerSquare(ms1_0, 20*ms1_0, true),
+			acts: []Runnable{
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+			},
 			durs: []time.Duration{
 				ms0_9,
 				ms0_9 * 4,
@@ -780,7 +797,10 @@ func BenchmarkComplexThrottlers(b *testing.B) {
 			NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
 			NewThrottlerNot(NewThrottlerEach(50)),
 		),
-		NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{MEMAlloc: 1000}),
+		NewThrottlerMonitor(
+			NewMonitorSystem(time.Minute, time.Millisecond),
+			Stats{MEMAlloc: 1000},
+		),
 	)
 	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
