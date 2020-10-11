@@ -18,7 +18,7 @@ type rsync struct {
 	report func(error)
 }
 
-func NewRunnerSync(ctx context.Context, thr Throttler) *rsync {
+func NewRunnerSync(ctx context.Context, thr Throttler) Runner {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rsync{thr: thr, ctx: ctx}
 	r.report = func(err error) {
@@ -70,7 +70,7 @@ type rasync struct {
 	report func(error)
 }
 
-func NewRunnerAsync(ctx context.Context, thr Throttler) *rasync {
+func NewRunnerAsync(ctx context.Context, thr Throttler) Runner {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rasync{thr: thr, ctx: ctx}
 	var once sync.Once

@@ -33,7 +33,7 @@ type techo struct {
 	err error
 }
 
-func NewThrottlerEcho(err error) techo {
+func NewThrottlerEcho(err error) Throttler {
 	return techo{err: err}
 }
 
@@ -49,7 +49,7 @@ type twait struct {
 	duration time.Duration
 }
 
-func NewThrottlerWait(duration time.Duration) twait {
+func NewThrottlerWait(duration time.Duration) Throttler {
 	return twait{duration: duration}
 }
 
@@ -69,7 +69,7 @@ type tsquare struct {
 	reset    bool
 }
 
-func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) *tsquare {
+func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler {
 	return &tsquare{duration: duration, limit: limit, reset: reset}
 }
 
@@ -92,7 +92,7 @@ func (thr *tsquare) Release(context.Context) error {
 
 type tcontext struct{}
 
-func NewThrottlerContext() tcontext {
+func NewThrottlerContext() Throttler {
 	return tcontext{}
 }
 
@@ -111,7 +111,7 @@ func (thr tcontext) Release(ctx context.Context) error {
 
 type tpanic struct{}
 
-func NewThrottlerPanic() tpanic {
+func NewThrottlerPanic() Throttler {
 	return tpanic{}
 }
 
@@ -128,7 +128,7 @@ type teach struct {
 	threshold uint64
 }
 
-func NewThrottlerEach(threshold uint64) *teach {
+func NewThrottlerEach(threshold uint64) Throttler {
 	return &teach{threshold: threshold}
 }
 
@@ -148,7 +148,7 @@ type tbefore struct {
 	threshold uint64
 }
 
-func NewThrottlerBefore(threshold uint64) *tbefore {
+func NewThrottlerBefore(threshold uint64) Throttler {
 	return &tbefore{threshold: threshold}
 }
 
@@ -168,7 +168,7 @@ type tafter struct {
 	threshold uint64
 }
 
-func NewThrottlerAfter(threshold uint64) *tafter {
+func NewThrottlerAfter(threshold uint64) Throttler {
 	return &tafter{threshold: threshold}
 }
 
@@ -187,7 +187,7 @@ type tchance struct {
 	threshold float64
 }
 
-func NewThrottlerChance(threshold float64) tchance {
+func NewThrottlerChance(threshold float64) Throttler {
 	threshold = math.Abs(threshold)
 	if threshold > 1.0 {
 		threshold = 1.0
@@ -211,7 +211,7 @@ type trunning struct {
 	threshold uint64
 }
 
-func NewThrottlerRunning(threshold uint64) *trunning {
+func NewThrottlerRunning(threshold uint64) Throttler {
 	return &trunning{threshold: threshold}
 }
 
@@ -231,7 +231,7 @@ type tbuffered struct {
 	running chan struct{}
 }
 
-func NewThrottlerBuffered(threshold uint64) *tbuffered {
+func NewThrottlerBuffered(threshold uint64) Throttler {
 	return &tbuffered{running: make(chan struct{}, threshold)}
 }
 
@@ -255,7 +255,7 @@ type tpriority struct {
 	levels    uint8
 }
 
-func NewThrottlerPriority(threshold uint64, levels uint8) tpriority {
+func NewThrottlerPriority(threshold uint64, levels uint8) Throttler {
 	if levels == 0 {
 		levels = 1
 	}
@@ -293,8 +293,8 @@ type ttimed struct {
 	loop Runnable
 }
 
-func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) ttimed {
-	tafter := NewThrottlerAfter(threshold)
+func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) Throttler {
+	tafter := NewThrottlerAfter(threshold).(*tafter)
 	delta, window := threshold, interval
 	if quantum > 0 && interval > quantum {
 		delta = uint64(math.Ceil(float64(threshold) / (float64(interval) / float64(quantum))))
@@ -330,7 +330,7 @@ type tlatency struct {
 	threshold time.Duration
 }
 
-func NewThrottlerLatency(threshold time.Duration, retention time.Duration) *tlatency {
+func NewThrottlerLatency(threshold time.Duration, retention time.Duration) Throttler {
 	thr := &tlatency{threshold: threshold}
 	thr.reset = delayed(retention, func(context.Context) error {
 		atomicSet(&thr.latency, 0)
@@ -364,7 +364,12 @@ type tpercentile struct {
 	percentile float64
 }
 
-func NewThrottlerPercentile(threshold time.Duration, capacity uint8, percentile float64, retention time.Duration) tpercentile {
+func NewThrottlerPercentile(
+	threshold time.Duration,
+	capacity uint8,
+	percentile float64,
+	retention time.Duration,
+) Throttler {
 	percentile = math.Abs(percentile)
 	if percentile > 1.0 {
 		percentile = 1.0
@@ -404,7 +409,7 @@ type tmonitor struct {
 	threshold Stats
 }
 
-func NewThrottlerMonitor(mnt Monitor, threshold Stats) tmonitor {
+func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler {
 	return tmonitor{mnt: mnt, threshold: threshold}
 }
 
@@ -430,7 +435,7 @@ type tmetric struct {
 	mtc Metric
 }
 
-func NewThrottlerMetric(mtc Metric) tmetric {
+func NewThrottlerMetric(mtc Metric) Throttler {
 	return tmetric{mtc: mtc}
 }
 
@@ -453,7 +458,7 @@ type tenqueue struct {
 	enq Enqueuer
 }
 
-func NewThrottlerEnqueue(enq Enqueuer) tenqueue {
+func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 	return tenqueue{enq: enq}
 }
 
@@ -488,9 +493,9 @@ func NewThrottlerAdaptive(
 	quantum time.Duration,
 	step uint64,
 	thr Throttler,
-) *tadaptive {
+) Throttler {
 	return &tadaptive{
-		ttimed: NewThrottlerTimed(threshold, interval, quantum),
+		ttimed: NewThrottlerTimed(threshold, interval, quantum).(ttimed),
 		step:   step,
 		thr:    thr,
 	}
@@ -517,7 +522,7 @@ type Pattern struct {
 
 type tpattern []Pattern
 
-func NewThrottlerPattern(patterns ...Pattern) tpattern {
+func NewThrottlerPattern(patterns ...Pattern) Throttler {
 	return tpattern(patterns)
 }
 
@@ -545,7 +550,7 @@ type tring struct {
 	release uint64
 }
 
-func NewThrottlerRing(thrs ...Throttler) *tring {
+func NewThrottlerRing(thrs ...Throttler) Throttler {
 	return &tring{thrs: thrs}
 }
 
@@ -569,7 +574,7 @@ func (thr *tring) Release(ctx context.Context) error {
 
 type tall []Throttler
 
-func NewThrottlerAll(thrs ...Throttler) tall {
+func NewThrottlerAll(thrs ...Throttler) Throttler {
 	return tall(thrs)
 }
 
@@ -596,7 +601,7 @@ func (thrs tall) Release(ctx context.Context) error {
 
 type tany []Throttler
 
-func NewThrottlerAny(thrs ...Throttler) tany {
+func NewThrottlerAny(thrs ...Throttler) Throttler {
 	return tany(thrs)
 }
 
@@ -630,7 +635,7 @@ type tnot struct {
 	thr Throttler
 }
 
-func NewThrottlerNot(thr Throttler) tnot {
+func NewThrottlerNot(thr Throttler) Throttler {
 	return tnot{thr: thr}
 }
 
@@ -650,7 +655,7 @@ type tsuppress struct {
 	thr Throttler
 }
 
-func NewThrottlerSuppress(thr Throttler) tsuppress {
+func NewThrottlerSuppress(thr Throttler) Throttler {
 	return tsuppress{thr: thr}
 }
 

@@ -95,7 +95,7 @@ type ctxthr struct {
 	freq time.Duration
 }
 
-func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) ctxthr {
+func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) context.Context {
 	return ctxthr{Context: ctx, thr: thr, freq: freq}
 }
 

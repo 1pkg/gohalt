@@ -22,7 +22,7 @@ func TestContext(t *testing.T) {
 		nil,
 	)
 	table := map[string]struct {
-		ctx ctxthr
+		ctx context.Context
 		err error
 	}{
 		"Context with throttler should be done on throttling": {
@@ -43,7 +43,6 @@ func TestContext(t *testing.T) {
 	}
 	for tname, tcase := range table {
 		t.Run(tname, func(t *testing.T) {
-			assert.Equal(t, tcase.ctx.thr, tcase.ctx.Throttler())
 			tick := time.NewTicker(ms3_0)
 			defer tick.Stop()
 			select {

@@ -20,7 +20,7 @@ type mtcprometheus struct {
 	value   bool
 }
 
-func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) *mtcprometheus {
+func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) Metric {
 	mtc := &mtcprometheus{}
 	var lock sync.Mutex
 	var api prometheus.API

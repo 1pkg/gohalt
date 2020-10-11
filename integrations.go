@@ -313,7 +313,12 @@ type rtstd struct {
 	on   RoundTripperStdOn
 }
 
-func NewRoundTripperStd(rt http.RoundTripper, thr Throttler, with RoundTripperStdWith, on RoundTripperStdOn) rtstd {
+func NewRoundTripperStd(
+	rt http.RoundTripper,
+	thr Throttler,
+	with RoundTripperStdWith,
+	on RoundTripperStdOn,
+) http.RoundTripper {
 	return rtstd{RoundTripper: rt, thr: thr, with: with, on: on}
 }
 
@@ -352,7 +357,12 @@ type rtfast struct {
 	on   RoundTripperFastOn
 }
 
-func NewRoundTripperFast(rt RoundTripperFast, thr Throttler, with RoundTripperFastWith, on RoundTripperFastOn) rtfast {
+func NewRoundTripperFast(
+	rt RoundTripperFast,
+	thr Throttler,
+	with RoundTripperFastWith,
+	on RoundTripperFastOn,
+) RoundTripperFast {
 	return rtfast{RoundTripperFast: rt, thr: thr, with: with, on: on}
 }
 
@@ -387,7 +397,7 @@ type rpcc struct {
 	on   RPCCodecOn
 }
 
-func NewRPCClientCodec(cc rpc.ClientCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpcc {
+func NewRPCClientCodec(cc rpc.ClientCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ClientCodec {
 	return rpcc{ClientCodec: cc, thr: thr, with: with, on: on}
 }
 
@@ -422,7 +432,7 @@ type rpcs struct {
 	on   RPCCodecOn
 }
 
-func NewRPCServerCodec(sc rpc.ServerCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpcs {
+func NewRPCServerCodec(sc rpc.ServerCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ServerCodec {
 	return rpcs{ServerCodec: sc, thr: thr, with: with, on: on}
 }
 
@@ -469,7 +479,7 @@ type grpccs struct {
 	on   GRPCStreamOn
 }
 
-func NewGRPCClientStream(cs grpc.ClientStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpccs {
+func NewGRPCClientStream(cs grpc.ClientStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ClientStream {
 	return grpccs{ClientStream: cs, thr: thr, with: with, on: on}
 }
 
@@ -504,7 +514,7 @@ type grpcss struct {
 	on   GRPCStreamOn
 }
 
-func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpcss {
+func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ServerStream {
 	return grpcss{ServerStream: ss, thr: thr, with: with, on: on}
 }
 
@@ -696,7 +706,7 @@ type sqlcli struct {
 	on   SQLClientOn
 }
 
-func NewSQLClient(cli SQLClient, thr Throttler, with SQLClientWith, on SQLClientOn) sqlcli {
+func NewSQLClient(cli SQLClient, thr Throttler, with SQLClientWith, on SQLClientOn) SQLClient {
 	return sqlcli{SQLClient: cli, thr: thr, with: with, on: on}
 }
 
@@ -767,7 +777,7 @@ type reader struct {
 	on   RWOn
 }
 
-func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) reader {
+func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) io.Reader {
 	return reader{
 		Reader: r,
 		thr:    thr,
@@ -795,7 +805,7 @@ type writer struct {
 	on   RWOn
 }
 
-func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) writer {
+func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) io.Writer {
 	return writer{
 		Writer: w,
 		thr:    thr,
