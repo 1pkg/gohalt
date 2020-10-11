@@ -37,7 +37,7 @@ type tcase struct {
 	over bool              // if throttler needs to be over released
 }
 
-func (t *tcase) run(index int) (err error, dur time.Duration) {
+func (t *tcase) run(index int) (dur time.Duration, err error) {
 	// get context with fallback
 	ctx := context.Background()
 	if index < len(t.ctxs) {
@@ -82,13 +82,13 @@ func (t *tcase) run(index int) (err error, dur time.Duration) {
 	}
 	for i := 0; i < limit; i++ {
 		if err := t.thr.Release(ctx); err != nil {
-			return err, dur
+			return dur, err
 		}
 	}
 	return
 }
 
-func (t *tcase) result(index int) (err error, dur time.Duration) {
+func (t *tcase) result(index int) (dur time.Duration, err error) {
 	if index < len(t.errs) {
 		err = t.errs[index]
 	}
@@ -758,14 +758,33 @@ func TestThrottlers(t *testing.T) {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
 					go func(t *testing.T, index int, tcase *tcase) {
 						defer wg.Done()
-						resErr, resDur := tcase.result(index)
-						err, dur := tcase.run(index)
-						assert.Equal(t, resErr, err)
-						assert.LessOrEqual(t, int64(resDur/2), int64(dur))
+						rdur, rerr := tcase.result(index)
+						dur, err := tcase.run(index)
+						assert.Equal(t, rerr, err)
+						assert.LessOrEqual(t, int64(rdur/2), int64(dur))
 					}(t, i, &ptrtcase)
 				})
 			}
 			wg.Wait()
 		})
+	}
+}
+
+func BenchmarkComplexThrottlers(b *testing.B) {
+	thr := NewThrottlerAll(
+		NewThrottlerAny(
+			NewThrottlerAfter(100),
+			NewThrottlerRunning(600),
+		),
+		NewThrottlerAny(
+			NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
+			NewThrottlerNot(NewThrottlerEach(50)),
+		),
+		NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{MEMAlloc: 1000}),
+	)
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		_ = thr.Acquire(ctx)
+		_ = thr.Release(ctx)
 	}
 }

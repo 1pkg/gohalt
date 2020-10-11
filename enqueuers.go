@@ -23,7 +23,7 @@ type enqrabbit struct {
 	exchange   string
 }
 
-func NewEnqueuerRabbit(url string, queue string, cahce time.Duration) enqrabbit {
+func NewEnqueuerRabbit(url string, queue string, cahce time.Duration) Enqueuer {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := enqrabbit{queue: queue, exchange: exchange}
 	var lock sync.Mutex
@@ -95,7 +95,7 @@ type enqkafka struct {
 	connection *kafka.Conn
 }
 
-func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) enqkafka {
+func NewEnqueuerKafka(net string, url string, topic string, cache time.Duration) Enqueuer {
 	enq := enqkafka{}
 	var lock sync.Mutex
 	enq.memconnect = cached(cache, func(ctx context.Context) error {

@@ -25,7 +25,7 @@ type mntsys struct {
 	stats   Stats
 }
 
-func NewMonitorSystem(cache time.Duration) *mntsys {
+func NewMonitorSystem(cache time.Duration) Monitor {
 	mnt := &mntsys{}
 	var lock sync.Mutex
 	mnt.memsync = cached(cache, func(ctx context.Context) error {
@@ -52,7 +52,7 @@ func (mnt *mntsys) sync(context.Context) error {
 		mnt.stats.CPUPause += p
 	}
 	mnt.stats.CPUPause /= 256
-	if percents, err := cpu.Percent(10*time.Millisecond, true); err != nil {
+	if percents, err := cpu.Percent(time.Millisecond, true); err != nil {
 		for _, p := range percents {
 			mnt.stats.CPUUsage += p
 		}
