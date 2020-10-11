@@ -76,7 +76,7 @@ func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool)
 func (thr *tsquare) Acquire(context.Context) error {
 	current := atomicBIncr(&thr.current)
 	duration := thr.duration * time.Duration(current*current)
-	if duration > thr.limit {
+	if thr.limit > 0 && duration > thr.limit {
 		duration = thr.limit
 		if thr.reset {
 			atomicSet(&thr.current, 0)
@@ -87,6 +87,7 @@ func (thr *tsquare) Acquire(context.Context) error {
 }
 
 func (thr *tsquare) Release(context.Context) error {
+	atomicBDecr(&thr.current)
 	return nil
 }
 

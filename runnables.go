@@ -3,9 +3,10 @@ package gohalt
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 )
+
+var DefaultRetriedDuration = 100 * time.Millisecond
 
 type Runnable func(context.Context) error
 
@@ -42,8 +43,8 @@ func delayed(after time.Duration, run Runnable) Runnable {
 func locked(run Runnable) Runnable {
 	var lock uint64
 	return func(ctx context.Context) error {
-		defer atomic.AddUint64(&lock, ^uint64(0))
-		if atomic.AddUint64(&lock, 1) > 1 {
+		defer atomicBDecr(&lock)
+		if atomicBIncr(&lock) > 1 {
 			return nil
 		}
 		return run(ctx)
@@ -51,17 +52,43 @@ func locked(run Runnable) Runnable {
 }
 
 func cached(cache time.Duration, run Runnable) Runnable {
-	var ts time.Time
+	var lock uint64
 	return func(ctx context.Context) error {
-		now := time.Now().UTC()
-		if now.Sub(ts) > cache {
+		ts := atomicGet(&lock)
+		now := uint64(time.Now().UTC().Unix())
+		// on first call run no matters what
+		if ts == 0 {
 			if err := run(ctx); err != nil {
 				return err
 			}
-			ts = now
+			atomicSet(&lock, now)
+			return nil
+		}
+		// then use cached timestamp
+		if cache > 0 && time.Duration(now-ts) > cache {
+			if err := run(ctx); err != nil {
+				return err
+			}
+			atomicSet(&lock, now)
 			return nil
 		}
 		return nil
+	}
+}
+
+func retried(retries uint64, run Runnable) Runnable {
+	thr := NewThrottlerSquare(DefaultRetriedDuration, 0, false)
+	return func(ctx context.Context) (err error) {
+		// no need neither to check error
+		// nor to call release counterpart
+		for i := uint64(0); i < retries; i++ {
+			_ = thr.Acquire(ctx)
+			err = run(ctx)
+			if err == nil {
+				return
+			}
+		}
+		return
 	}
 }
 

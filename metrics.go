@@ -16,17 +16,15 @@ type Metric interface {
 }
 
 type mtcprometheus struct {
+	lock    sync.Mutex
 	mempull Runnable
 	value   bool
 }
 
 func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) Metric {
 	mtc := &mtcprometheus{}
-	var lock sync.Mutex
 	var api prometheus.API
 	mtc.mempull = cached(cache, func(ctx context.Context) (err error) {
-		lock.Lock()
-		defer lock.Unlock()
 		if api != nil {
 			return mtc.pull(ctx, api, cache, mstep, query)
 		}
@@ -40,13 +38,15 @@ func NewMetricPrometheus(url string, query string, cache time.Duration, mstep ti
 }
 
 func (mtc *mtcprometheus) Query(ctx context.Context) (bool, error) {
+	mtc.lock.Lock()
+	defer mtc.lock.Unlock()
 	if err := mtc.mempull(ctx); err != nil {
 		return mtc.value, err
 	}
 	return mtc.value, nil
 }
 
-func (mtc mtcprometheus) connect(_ context.Context, url string) (prometheus.API, error) {
+func (mtc *mtcprometheus) connect(_ context.Context, url string) (prometheus.API, error) {
 	client, err := client.NewClient(
 		client.Config{
 			Address:      url,
