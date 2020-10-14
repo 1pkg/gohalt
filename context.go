@@ -15,6 +15,9 @@ const (
 	ghctxmarshaler ghctxid = "gohalt_context_marshaler"
 )
 
+// WithTimestamp adds the provided timestamp to the provided context
+// to determine latency between `Acquire` and `Release`.
+// Resulted context is used by: `latency` and `percentile` throtttlers.
 func WithTimestamp(ctx context.Context, ts time.Time) context.Context {
 	return context.WithValue(ctx, ghctxtimestamp, ts)
 }
@@ -28,6 +31,9 @@ func ctxTimestamp(ctx context.Context) time.Time {
 	return time.Now().UTC()
 }
 
+// WithPriority adds the provided priority to the provided context
+// to differ `Acquire` priority levels.
+// Resulted context is used by: `priority` throtttler.
 func WithPriority(ctx context.Context, priority uint8) context.Context {
 	return context.WithValue(ctx, ghctxpriority, priority)
 }
@@ -41,6 +47,9 @@ func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	return 1
 }
 
+// WithKey adds the provided key to the provided context
+// to add additional call identifier to context.
+// Resulted context is used by: `pattern` throtttler.
 func WithKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, ghctxkey, key)
 }
@@ -52,6 +61,10 @@ func ctxKey(ctx context.Context) string {
 	return ""
 }
 
+// WithData adds the provided data to the provided context
+// to add additional data that need to be used to context.
+// Resulted context is used by: `enqueue` throtttler.
+// Used in pair with `WithMarshaler`.
 func WithData(ctx context.Context, data interface{}) context.Context {
 	return context.WithValue(ctx, ghctxdata, data)
 }
@@ -60,6 +73,10 @@ func ctxData(ctx context.Context) interface{} {
 	return ctx.Value(ghctxdata)
 }
 
+// WithMarshaler adds the provided marshaler to the provided context
+// to add additional data marshaler that need to be used to context.
+// Resulted context is used by: `enqueue` throtttler.
+// Used in pair with `WithData`.
 func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context {
 	return context.WithValue(ctx, ghctxmarshaler, mrsh)
 }
@@ -73,6 +90,12 @@ func ctxMarshaler(ctx context.Context) Marshaler {
 	return DefaultMarshaler
 }
 
+// WithParams facade call that respectively calls:
+// - `WithTimestamp`
+// - `WithPriority`
+// - `WithKey`
+// - `WithData`
+// - `WithMarshaler`
 func WithParams(
 	ctx context.Context,
 	ts time.Time,
@@ -95,6 +118,9 @@ type ctxthr struct {
 	freq time.Duration
 }
 
+// WithThrottler adds the provided thr to the provided context
+// and defines context implementation that uses parrent context plus throttler internally
+// that closes context done chanel if internal throttler throttles.
 func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) context.Context {
 	return ctxthr{Context: ctx, thr: thr, freq: freq}
 }
