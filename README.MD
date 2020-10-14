@@ -9,6 +9,7 @@
 [![report](https://goreportcard.com/badge/github.com/1pkg/gohalt)](https://goreportcard.com/report/github.com/1pkg/gohalt)
 [![version](https://img.shields.io/github/go-mod/go-version/1pkg/gohalt)](https://github.com/1pkg/gohalt/blob/master/go.mod)
 [![license](https://img.shields.io/github/license/1pkg/gohalt)](LICENSE)
+[![godoc](https://img.shields.io/badge/godoc-godoc-green)](https://pkg.go.dev/github.com/1pkg/gohalt?tab=doc)
 
 ## Introduction
 
@@ -105,8 +106,6 @@ select {
 }
 ```
 If internal context throttler is throttling context done chanel will be closed respectively. **Note** such behavior is implemented by throttler long pooling with the specified frequency, so efficiently there will be additional throttling user in form of long pooling goroutine.
-
-[godoc](https://pkg.go.dev/github.com/1pkg/gohalt?tab=doc)
 
 ```go
 	// complex throttler example
