@@ -10,7 +10,7 @@ type ghctxid string
 const (
 	ghctxpriority  ghctxid = "gohalt_context_priority"
 	ghctxkey       ghctxid = "gohalt_context_key"
-	ghctxdata      ghctxid = "gohalt_context_data"
+	ghctxmessage   ghctxid = "gohalt_context_message"
 	ghctxtimestamp ghctxid = "gohalt_context_timestamp"
 	ghctxmarshaler ghctxid = "gohalt_context_marshaler"
 )
@@ -61,22 +61,22 @@ func ctxKey(ctx context.Context) string {
 	return ""
 }
 
-// WithData adds the provided data to the provided context
-// to add additional data that need to be used to context.
+// WithMessage adds the provided message to the provided context
+// to add additional message that need to be used to context.
 // Resulted context is used by: `enqueue` throtttler.
 // Used in pair with `WithMarshaler`.
-func WithData(ctx context.Context, data interface{}) context.Context {
-	return context.WithValue(ctx, ghctxdata, data)
+func WithMessage(ctx context.Context, message interface{}) context.Context {
+	return context.WithValue(ctx, ghctxmessage, message)
 }
 
-func ctxData(ctx context.Context) interface{} {
-	return ctx.Value(ghctxdata)
+func ctxMessage(ctx context.Context) interface{} {
+	return ctx.Value(ghctxmessage)
 }
 
 // WithMarshaler adds the provided marshaler to the provided context
-// to add additional data marshaler that need to be used to context.
+// to add additional message marshaler that need to be used to context.
 // Resulted context is used by: `enqueue` throtttler.
-// Used in pair with `WithData`.
+// Used in pair with `WithMessage`.
 func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context {
 	return context.WithValue(ctx, ghctxmarshaler, mrsh)
 }
@@ -94,20 +94,20 @@ func ctxMarshaler(ctx context.Context) Marshaler {
 // - `WithTimestamp`
 // - `WithPriority`
 // - `WithKey`
-// - `WithData`
+// - `WithMessage`
 // - `WithMarshaler`
 func WithParams(
 	ctx context.Context,
 	ts time.Time,
 	priority uint8,
 	key string,
-	data interface{},
+	message interface{},
 	marshaler Marshaler,
 ) context.Context {
 	ctx = WithTimestamp(ctx, ts)
 	ctx = WithPriority(ctx, priority)
 	ctx = WithKey(ctx, key)
-	ctx = WithData(ctx, data)
+	ctx = WithMessage(ctx, message)
 	ctx = WithMarshaler(ctx, marshaler)
 	return ctx
 }

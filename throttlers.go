@@ -525,8 +525,8 @@ type tenqueue struct {
 
 // NewThrottlerEnqueue creates new throttler instance that
 // always enqueues message to the specified queue throttles only if any internal error occurred.
-// Use `WithData` to specify context data for enqueued message and
-// `WithMarshaler` to specify context data marshaler.
+// Use `WithMessage` to specify context message for enqueued message and
+// `WithMarshaler` to specify context message marshaler.
 // Builtin `Enqueuer` implementations come with connection reuse and retries by default.
 // Use builtin `NewEnqueuerRabbit` to create RabbitMQ enqueuer instance
 // or `NewEnqueuerKafka` to create Kafka enqueuer instance.
@@ -535,18 +535,19 @@ func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 }
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
-	marshaler, data := ctxMarshaler(ctx), ctxData(ctx)
+	marshaler := ctxMarshaler(ctx)
 	if marshaler == nil {
 		return errors.New("throttler hasn't found any marshaler")
 	}
-	if data == nil {
+	message := ctxMessage(ctx)
+	if message == nil {
 		return errors.New("throttler hasn't found any message")
 	}
-	message, err := marshaler(data)
+	msg, err := marshaler(message)
 	if err != nil {
 		return fmt.Errorf("throttler hasn't sent any message %w", err)
 	}
-	if err := thr.enq.Enqueue(ctx, message); err != nil {
+	if err := thr.enq.Enqueue(ctx, msg); err != nil {
 		return fmt.Errorf("throttler hasn't sent any message %w", err)
 	}
 	return nil
