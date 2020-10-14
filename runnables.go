@@ -96,6 +96,7 @@ func retried(retries uint64, run Runnable) Runnable {
 			if err == nil {
 				return
 			}
+			log("retry error happened %v", err)
 		}
 		return
 	}

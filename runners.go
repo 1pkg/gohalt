@@ -32,9 +32,12 @@ func NewRunnerSync(ctx context.Context, thr Throttler) Runner {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rsync{thr: thr, ctx: ctx}
 	r.report = func(err error) {
-		if r.err == nil && err != nil {
-			r.err = err
-			cancel()
+		if err != nil {
+			if r.err == nil {
+				r.err = err
+				cancel()
+			}
+			log("sync runner error happened %v", err)
 		}
 	}
 	return &r
@@ -94,6 +97,7 @@ func NewRunnerAsync(ctx context.Context, thr Throttler) Runner {
 				r.err = err
 				cancel()
 			})
+			log("async runner error happened %v", err)
 		}
 	}
 	return &r

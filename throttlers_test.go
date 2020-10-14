@@ -541,6 +541,20 @@ func TestThrottlers(t *testing.T) {
 				errors.New("throttler has reached metric threshold"),
 			},
 		},
+		"Throttler enqueue should throttle on internal nil marshaler error": {
+			tms: 3,
+			thr: NewThrottlerEnqueue(enqmock{}),
+			ctxs: []context.Context{
+				WithMarshaler(context.Background(), nil),
+				WithMarshaler(context.Background(), nil),
+				WithMarshaler(context.Background(), nil),
+			},
+			errs: []error{
+				errors.New("throttler hasn't found any marshaler"),
+				errors.New("throttler hasn't found any marshaler"),
+				errors.New("throttler hasn't found any marshaler"),
+			},
+		},
 		"Throttler enqueue should throttle on internal message error": {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),

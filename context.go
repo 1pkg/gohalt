@@ -137,6 +137,7 @@ func (ctx ctxthr) Done() <-chan struct{} {
 		err := ctx.Err()
 		if err != nil {
 			close(ch)
+			log("context is canceled due %v", err)
 		}
 		return err
 	}))

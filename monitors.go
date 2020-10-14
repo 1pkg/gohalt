@@ -2,7 +2,6 @@ package gohalt
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -51,7 +50,6 @@ func NewMonitorSystem(cache time.Duration, tp time.Duration) Monitor {
 		if err := memsync(ctx); err != nil {
 			return mnt.stats, err
 		}
-		fmt.Println(mnt.stats)
 		return mnt.stats, nil
 	}
 	return mnt
