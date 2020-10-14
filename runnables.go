@@ -55,9 +55,9 @@ func locked(run Runnable) Runnable {
 	}
 }
 
-func cached(tp time.Duration, run Runnable) Runnable {
+func cached(tp time.Duration, run Runnable) (cached Runnable, reset Runnable) {
 	var lock uint64
-	return func(ctx context.Context) error {
+	cached = func(ctx context.Context) error {
 		ts := atomicGet(&lock)
 		now := uint64(time.Now().UTC().Unix())
 		// on first call run no matters what
@@ -78,6 +78,11 @@ func cached(tp time.Duration, run Runnable) Runnable {
 		}
 		return nil
 	}
+	reset = func(context.Context) error {
+		atomicSet(&lock, 0)
+		return nil
+	}
+	return
 }
 
 func retried(retries uint64, run Runnable) Runnable {
@@ -85,7 +90,7 @@ func retried(retries uint64, run Runnable) Runnable {
 	return func(ctx context.Context) (err error) {
 		// no need neither to check error
 		// nor to call release counterpart
-		for i := uint64(0); i < retries; i++ {
+		for i := uint64(0); i < retries+1; i++ {
 			_ = thr.Acquire(ctx)
 			err = run(ctx)
 			if err == nil {
