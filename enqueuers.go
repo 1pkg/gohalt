@@ -11,7 +11,9 @@ import (
 	"github.com/streadway/amqp"
 )
 
+// Enqueuer defines abstract message enqueuing interface.
 type Enqueuer interface {
+	// Enqueue enqueues provided message or returns internal error if any happened.
 	Enqueue(context.Context, []byte) error
 }
 
@@ -23,6 +25,11 @@ type enqrabbit struct {
 	channel    *amqp.Channel
 }
 
+// NewEnqueuerRabbit creates RabbitMQ enqueuer instance
+// with cached connection and failure retries
+// which enqueues provided message to the specified queue.
+// New unique exchange `gohalt_exchange_{{uuid}}` is created for each new enqueuer,
+// new unique message id `gohalt_enqueue_{{uuid}}` is created for each new message.
 func NewEnqueuerRabbit(url string, queue string, retries uint64) Enqueuer {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := &enqrabbit{}
@@ -104,6 +111,10 @@ type enqkafka struct {
 	connection *kafka.Conn
 }
 
+// NewEnqueuerKafka creates Kafka enqueuer instance
+// with cached connection and failure retries
+// which enqueues provided message to the specified topic.
+// New unique message key `gohalt_enqueue_{{uuid}}` is created for each new message.
 func NewEnqueuerKafka(net string, url string, topic string, retries uint64) Enqueuer {
 	enq := &enqkafka{}
 	enq.memconnect = cached(0, func(ctx context.Context) error {

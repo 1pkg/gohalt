@@ -11,7 +11,9 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Metric defines single metric querier interface that returns the metric query result.
 type Metric interface {
+	// Query returns the result of the query or internal error if any happened.
 	Query(context.Context) (bool, error)
 }
 
@@ -21,6 +23,9 @@ type mtcprometheus struct {
 	value   bool
 }
 
+// NewMetricPrometheus creates prometheus metric querier instance
+// with cache interval defined by the provided duration
+// which executes provided prometheus metric query.
 func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) Metric {
 	mtc := &mtcprometheus{}
 	var api prometheus.API

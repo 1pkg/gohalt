@@ -9,15 +9,22 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 )
 
-type Monitor interface {
-	Stats(context.Context) (Stats, error)
-}
-
+// Stats defines typical set of metrics returned by system monitor:
+// - MEMAlloc shows how many bytes are allocated by heap objects.
+// - MEMSystem shows how many bytes are obtained from the OS.
+// - CPUPause shows average GC stop-the-world pause in nanoseconds.
+// - CPUUsage shows average CPU utilization in percents.
 type Stats struct {
 	MEMAlloc  uint64
 	MEMSystem uint64
 	CPUPause  uint64
 	CPUUsage  float64
+}
+
+// Monitor defines system monitor interface that returns the system stats.
+type Monitor interface {
+	// Stats returns system stats or internal error if any happened.
+	Stats(context.Context) (Stats, error)
 }
 
 type mntsys struct {
@@ -26,6 +33,8 @@ type mntsys struct {
 	stats   Stats
 }
 
+// NewMonitorSystem creates system monitor instance
+// with cache interval defined by the provided duration.
 func NewMonitorSystem(cache time.Duration, tp time.Duration) Monitor {
 	mnt := &mntsys{}
 	mnt.memsync = cached(cache, func(ctx context.Context) error {
