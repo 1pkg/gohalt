@@ -43,11 +43,19 @@ type Throttler interface {
 
 In Gohalt throtllers could be easily combined with each other to build complex pipelines. There are multiple composite throttlers (all, any, ring, pattern, not, etc) as well as leaf throttlers (timed, latency, monitor, metric, percentile, etc) to work with in Gohalt. If you don't find in [existing throttlers](#Throttlers) the one that fits your needs you can create custom throttler by implementing `Throttler` interface. Such custom throttler should work with existing Gohalt throttlers and tools out of box.
 
-Gohalt includes multiple supporting surrounding tools to make throttling even sugary.
+Gohalt includes multiple supporting surrounding tools to make throttling more sugary.
 ```go
+// Runnable defined by typical abstract async func signature.
+// Runnable is used by `Runner` as a subject for execution.
 type Runnable func(context.Context) error
+// Runner defines abstraction to execute a set of `Runnable`
+// and return possible execution error back.
+// Runner is designed to simplify work with throttlers
+// by managing `Acquire`/`Release` loop.
 type Runner interface {
+	// Run executes single prodived `Runnable` instance.
 	Run(Runnable)
+	// Result returns possible execution error back.
 	Result() error
 }
 ```

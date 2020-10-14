@@ -6,8 +6,12 @@ import (
 	"time"
 )
 
+// DefaultRetriedDuration defines default initial duration for `square` throttler used by default.
+// By default DefaultRetriedDuration is set to use `100 * time.Millisecond`.
 var DefaultRetriedDuration = 100 * time.Millisecond
 
+// Runnable defined by typical abstract async func signature.
+// Runnable is used by `Runner` as a subject for execution.
 type Runnable func(context.Context) error
 
 func use(err error) Runnable {
