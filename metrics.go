@@ -71,9 +71,12 @@ func (mtc *mtcprometheus) connect(_ context.Context, url string) (prometheus.API
 
 func (mtc *mtcprometheus) pull(ctx context.Context, api prometheus.API, query string) error {
 	ts := time.Now().UTC()
-	val, _, err := api.Query(ctx, query, ts)
+	val, warns, err := api.Query(ctx, query, ts)
 	if err != nil {
 		return err
+	}
+	for _, warn := range warns {
+		log("prometheus warning happened %s", warn)
 	}
 	vec, ok := val.(model.Vector)
 	if !ok || vec.Len() != 1 {

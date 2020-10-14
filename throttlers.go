@@ -80,7 +80,7 @@ type tsquare struct {
 
 // NewThrottlerSquare creates new throttler instance that
 // always waits for square growing [1, 4, 9, 16, ...] multiplier on the specified duration,
-// up until the specified duration limit is riched.
+// up until the specified duration limit is reached.
 // If reset is set then after throttler riches the specified duration limit
 // next multiplier value will be reseted.
 func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler {
@@ -497,7 +497,7 @@ type tmetric struct {
 
 // NewThrottlerMetric creates new throttler instance that
 // throttles call ifboolean  metric defined by the specified
-// boolean metric is riched or if any internal error occurred.
+// boolean metric is reached or if any internal error occurred.
 // Builtin `Metric` implementations come with boolean metric caching by default.
 // Use builtin `NewMetricPrometheus` to create Prometheus metric instance.
 func NewThrottlerMetric(mtc Metric) Throttler {
@@ -536,7 +536,10 @@ func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 
 func (thr tenqueue) Acquire(ctx context.Context) error {
 	marshaler, data := ctxMarshaler(ctx), ctxData(ctx)
-	if marshaler == nil || data == nil {
+	if marshaler == nil {
+		return errors.New("throttler hasn't found any marshaler")
+	}
+	if data == nil {
 		return errors.New("throttler hasn't found any message")
 	}
 	message, err := marshaler(data)
@@ -756,7 +759,9 @@ func NewThrottlerSuppress(thr Throttler) Throttler {
 }
 
 func (thr tsuppress) Acquire(ctx context.Context) error {
-	_ = thr.thr.Acquire(ctx)
+	if err := thr.thr.Acquire(ctx); err != nil {
+		log("throttler error is suppressed %v", err)
+	}
 	return nil
 }
 
