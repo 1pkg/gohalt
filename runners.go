@@ -6,8 +6,14 @@ import (
 	"sync"
 )
 
+// Runner defines abstraction to execute a set of `Runnable`
+// and return possible execution error back.
+// Runner is designed to simplify work with throttlers
+// by managing `Acquire`/`Release` loop.
 type Runner interface {
+	// Run executes single prodived `Runnable` instance.
 	Run(Runnable)
+	// Result returns possible execution error back.
 	Result() error
 }
 
@@ -18,6 +24,10 @@ type rsync struct {
 	report func(error)
 }
 
+// NewRunnerSync creates synchronous runner instance
+// that runs a set of `Runnable` consecutively
+// with regard to the provided context and throttler.
+// First occurred error is returned from result.
 func NewRunnerSync(ctx context.Context, thr Throttler) Runner {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rsync{thr: thr, ctx: ctx}
@@ -70,6 +80,10 @@ type rasync struct {
 	report func(error)
 }
 
+// NewRunnerAsync creates asynchronous runner instance
+// that runs a set of `Runnable` simultaneously
+// with regard to the provided context and throttler.
+// First occurred error is returned from result.
 func NewRunnerAsync(ctx context.Context, thr Throttler) Runner {
 	ctx, cancel := context.WithCancel(ctx)
 	r := rasync{thr: thr, ctx: ctx}
