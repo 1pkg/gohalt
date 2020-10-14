@@ -568,9 +568,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
-				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
-				WithMarshaler(WithData(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
 			},
 			errs: []error{
 				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
@@ -582,9 +582,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{err: errors.New("test")}),
 			ctxs: []context.Context{
-				WithData(context.Background(), "test"),
-				WithData(context.Background(), "test"),
-				WithData(context.Background(), "test"),
+				WithMessage(context.Background(), "test"),
+				WithMessage(context.Background(), "test"),
+				WithMessage(context.Background(), "test"),
 			},
 			errs: []error{
 				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
@@ -596,9 +596,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithData(context.Background(), "test"), marshal(nil)),
-				WithData(context.Background(), "test"),
-				WithData(context.Background(), "test"),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(nil)),
+				WithMessage(context.Background(), "test"),
+				WithMessage(context.Background(), "test"),
 			},
 		},
 		"Throttler adaptive should throttle on throttling adoptee": {
