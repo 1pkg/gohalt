@@ -467,6 +467,8 @@ type tmonitor struct {
 // NewThrottlerMonitor creates new throttler instance that
 // throttles call if any of the stats returned by provided monitor exceeds
 // any of the stats defined by the specified threshold or if any internal error occurred.
+// Builtin `Monitor` implementations come with stats caching by default.
+// Use builtin `NewMonitorSystem` to create go system monitor instance.
 func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler {
 	return tmonitor{mnt: mnt, threshold: threshold}
 }
@@ -494,8 +496,10 @@ type tmetric struct {
 }
 
 // NewThrottlerMetric creates new throttler instance that
-// throttles call if metric defined by the specified metric is riched or
-// if any internal error occurred.
+// throttles call ifboolean  metric defined by the specified
+// boolean metric is riched or if any internal error occurred.
+// Builtin `Metric` implementations come with boolean metric caching by default.
+// Use builtin `NewMetricPrometheus` to create Prometheus metric instance.
 func NewThrottlerMetric(mtc Metric) Throttler {
 	return tmetric{mtc: mtc}
 }
@@ -523,6 +527,9 @@ type tenqueue struct {
 // always enqueues message to the specified queue throttles only if any internal error occurred.
 // Use `WithData` to specify context data for enqueued message and
 // `WithMarshaler` to specify context data marshaler.
+// Builtin `Enqueuer` implementations come with connection reuse and retries by default.
+// Use builtin `NewEnqueuerRabbit` to create RabbitMQ enqueuer instance
+// or `NewEnqueuerKafka` to create Kafka enqueuer instance.
 func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 	return tenqueue{enq: enq}
 }

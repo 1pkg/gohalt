@@ -55,7 +55,7 @@ func locked(run Runnable) Runnable {
 	}
 }
 
-func cached(tp time.Duration, run Runnable) (cached Runnable, reset Runnable) {
+func cached(cache time.Duration, run Runnable) (cached Runnable, reset Runnable) {
 	var lock uint64
 	cached = func(ctx context.Context) error {
 		ts := atomicGet(&lock)
@@ -69,7 +69,7 @@ func cached(tp time.Duration, run Runnable) (cached Runnable, reset Runnable) {
 			return nil
 		}
 		// then use cached timestamp
-		if tp > 0 && time.Duration(now-ts) > tp {
+		if cache > 0 && time.Duration(now-ts) > cache {
 			if err := run(ctx); err != nil {
 				return err
 			}
