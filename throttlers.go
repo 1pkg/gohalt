@@ -11,8 +11,13 @@ import (
 	"time"
 )
 
+// Throttler defines core gohalt throttler abstraction and exposes pair of counterpart methods: `Acquire` and `Release`.
 type Throttler interface {
+	// Acquire takes a part of throttling quota or returns error if throttling quota is drained
+	// it needs to be called right before shared resource acquire.
 	Acquire(context.Context) error
+	// Release puts a part of throttling quota back or returns error if this is not possible
+	// it needs to be called just after shared resource release.
 	Release(context.Context) error
 }
 
@@ -33,6 +38,8 @@ type techo struct {
 	err error
 }
 
+// NewThrottlerEcho creates new throttler instance that
+// always throttles with the specified error back.
 func NewThrottlerEcho(err error) Throttler {
 	return techo{err: err}
 }
@@ -49,6 +56,8 @@ type twait struct {
 	duration time.Duration
 }
 
+// NewThrottlerWait creates new throttler instance that
+// always waits for the specified duration.
 func NewThrottlerWait(duration time.Duration) Throttler {
 	return twait{duration: duration}
 }
@@ -69,6 +78,11 @@ type tsquare struct {
 	reset    bool
 }
 
+// NewThrottlerSquare creates new throttler instance that
+// always waits for square growing [1, 4, 9, 16, ...] multiplier on the specified duration,
+// up until the specified duration limit is riched.
+// If reset is set then after throttler riches the specified duration limit
+// next multiplier value will be reseted.
 func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler {
 	return &tsquare{duration: duration, limit: limit, reset: reset}
 }
@@ -93,6 +107,8 @@ func (thr *tsquare) Release(context.Context) error {
 
 type tcontext struct{}
 
+// NewThrottlerContext creates new throttler instance that
+// always throttless on done context.
 func NewThrottlerContext() Throttler {
 	return tcontext{}
 }
@@ -112,6 +128,7 @@ func (thr tcontext) Release(ctx context.Context) error {
 
 type tpanic struct{}
 
+// NewThrottlerPanic creates new throttler instance that always panics.
 func NewThrottlerPanic() Throttler {
 	return tpanic{}
 }
@@ -129,6 +146,8 @@ type teach struct {
 	threshold uint64
 }
 
+// NewThrottlerEach creates new throttler instance that
+// throttles each periodic i-th call defined by the specified threshold.
 func NewThrottlerEach(threshold uint64) Throttler {
 	return &teach{threshold: threshold}
 }
@@ -149,6 +168,8 @@ type tbefore struct {
 	threshold uint64
 }
 
+// NewThrottlerBefore creates new throttler instance that
+// throttles each call below the i-th call defined by the specified threshold.
 func NewThrottlerBefore(threshold uint64) Throttler {
 	return &tbefore{threshold: threshold}
 }
@@ -169,6 +190,8 @@ type tafter struct {
 	threshold uint64
 }
 
+// NewThrottlerAfter creates new throttler instance that
+// throttles each call after the i-th call defined by the specified threshold.
 func NewThrottlerAfter(threshold uint64) Throttler {
 	return &tafter{threshold: threshold}
 }
@@ -188,6 +211,10 @@ type tchance struct {
 	threshold float64
 }
 
+// NewThrottlerChance creates new throttler instance that
+// throttles each call with the chance p defined by the specified threshold.
+// Chance value is normalized to [0.0, 1.0] range.
+// Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.
 func NewThrottlerChance(threshold float64) Throttler {
 	threshold = math.Abs(threshold)
 	if threshold > 1.0 {
@@ -212,6 +239,9 @@ type trunning struct {
 	threshold uint64
 }
 
+// NewThrottlerRunning creates new throttler instance that
+// throttles each call which exeeds the running quota acquired - release
+// q defined by the specified threshold.
 func NewThrottlerRunning(threshold uint64) Throttler {
 	return &trunning{threshold: threshold}
 }
@@ -232,6 +262,9 @@ type tbuffered struct {
 	running chan struct{}
 }
 
+// NewThrottlerBuffered creates new throttler instance that
+// waits on call which exeeds the running quota acquired - release
+// q defined by the specified threshold until the running quota is available again.
 func NewThrottlerBuffered(threshold uint64) Throttler {
 	return &tbuffered{running: make(chan struct{}, threshold)}
 }
@@ -256,6 +289,12 @@ type tpriority struct {
 	levels    uint8
 }
 
+// NewThrottlerPriority creates new throttler instance that
+// waits on call which exeeds the running quota acquired - release
+// q defined by the specified threshold until the running quota is available again.
+// Running quota is not equally distributed between n levels of priority
+// defined by the specified levels.
+// Use `WithPriority` to override context call priority, 1 by default.
 func NewThrottlerPriority(threshold uint64, levels uint8) Throttler {
 	if levels == 0 {
 		levels = 1
@@ -294,6 +333,11 @@ type ttimed struct {
 	loop Runnable
 }
 
+// NewThrottlerTimed creates new throttler instance that
+// throttles each call which exeeds the running quota acquired - release
+// q defined by the specified threshold in the specified interval.
+// Periodically each specified interval the running quota number is reseted.
+// If quantum is set then quantum will be used instead of interval to provide the running quota delta updates.
 func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) Throttler {
 	tafter := NewThrottlerAfter(threshold).(*tafter)
 	delta, window := threshold, interval
@@ -331,6 +375,10 @@ type tlatency struct {
 	threshold time.Duration
 }
 
+// NewThrottlerLatency creates new throttler instance that
+// throttles each call after the call latency l defined by the specified threshold was exeeded once.
+// If retention is set then throttler state will be reseted after retention duration.
+// Use `WithTimestamp` to specify running duration between throttler acquire and release.
 func NewThrottlerLatency(threshold time.Duration, retention time.Duration) Throttler {
 	thr := &tlatency{threshold: threshold}
 	thr.reset = delayed(retention, func(context.Context) error {
@@ -365,6 +413,12 @@ type tpercentile struct {
 	percentile float64
 }
 
+// NewThrottlerPercentile creates new throttler instance that
+// throttles each call after the call latency l defined by the specified threshold
+// was exeeded once considering the specified percentile.
+// Percentile values are kept in bounded buffer with capacity c defined by the specified capacity.
+// If retention is set then throttler state will be reseted after retention duration.
+// Use `WithTimestamp` to specify running duration between throttler acquire and release.
 func NewThrottlerPercentile(
 	threshold time.Duration,
 	capacity uint8,
@@ -410,6 +464,9 @@ type tmonitor struct {
 	threshold Stats
 }
 
+// NewThrottlerMonitor creates new throttler instance that
+// throttles call if any of the stats returned by provided monitor exceeds
+// any of the stats defined by the specified threshold or if any internal error occurred.
 func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler {
 	return tmonitor{mnt: mnt, threshold: threshold}
 }
@@ -436,6 +493,9 @@ type tmetric struct {
 	mtc Metric
 }
 
+// NewThrottlerMetric creates new throttler instance that
+// throttles call if metric defined by the specified metric is riched or
+// if any internal error occurred.
 func NewThrottlerMetric(mtc Metric) Throttler {
 	return tmetric{mtc: mtc}
 }
@@ -459,6 +519,10 @@ type tenqueue struct {
 	enq Enqueuer
 }
 
+// NewThrottlerEnqueue creates new throttler instance that
+// always enqueues message to the specified queue throttles only if any internal error occurred.
+// Use `WithData` to specify context data for enqueued message and
+// `WithMarshaler` to specify context data marshaler.
 func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 	return tenqueue{enq: enq}
 }
@@ -488,6 +552,15 @@ type tadaptive struct {
 	thr  Throttler
 }
 
+// NewThrottlerAdaptive creates new throttler instance that
+// throttles each call which exeeds the running quota acquired - release q
+// defined by the specified threshold in the specified interval.
+// Periodically each specified interval the running quota number is reseted.
+// If quantum is set then quantum will be used instead of interval
+// to provide the running quota delta updates.
+// Provided adapted throttler adjusts the running quota of adapter throttler by changing the value by d
+// defined by the specified step, it subtracts *d^2* from the running quota
+// if adapted throttler throttles or adds *d* to the running quota if it doesn't.
 func NewThrottlerAdaptive(
 	threshold uint64,
 	interval time.Duration,
@@ -516,6 +589,7 @@ func (thr tadaptive) Release(ctx context.Context) error {
 	return thr.ttimed.Release(ctx)
 }
 
+// Pattern defines a pair of regexp and related throttler.
 type Pattern struct {
 	Pattern   *regexp.Regexp
 	Throttler Throttler
@@ -523,6 +597,10 @@ type Pattern struct {
 
 type tpattern []Pattern
 
+// NewThrottlerPattern creates new throttler instance that
+// throttles if matching throttler from provided patterns throttles.
+// Use `WithKey` to specify key for regexp pattern throttler matching.
+// See `Pattern` which defines a pair of regexp and related throttler.
 func NewThrottlerPattern(patterns ...Pattern) Throttler {
 	return tpattern(patterns)
 }
@@ -551,6 +629,8 @@ type tring struct {
 	release uint64
 }
 
+// NewThrottlerRing creates new throttler instance that
+// throttles if the i-th call throttler from provided list throttle.
 func NewThrottlerRing(thrs ...Throttler) Throttler {
 	return &tring{thrs: thrs}
 }
@@ -575,6 +655,8 @@ func (thr *tring) Release(ctx context.Context) error {
 
 type tall []Throttler
 
+// NewThrottlerAll creates new throttler instance that
+// throttles call if all provided throttlers throttle.
 func NewThrottlerAll(thrs ...Throttler) Throttler {
 	return tall(thrs)
 }
@@ -602,6 +684,8 @@ func (thrs tall) Release(ctx context.Context) error {
 
 type tany []Throttler
 
+// NewThrottlerAny creates new throttler instance that
+// throttles call if any of provided throttlers throttle.
 func NewThrottlerAny(thrs ...Throttler) Throttler {
 	return tany(thrs)
 }
@@ -636,6 +720,8 @@ type tnot struct {
 	thr Throttler
 }
 
+// NewThrottlerNot creates new throttler instance that
+// throttles call if provided throttler doesn't throttle.
 func NewThrottlerNot(thr Throttler) Throttler {
 	return tnot{thr: thr}
 }
@@ -656,6 +742,8 @@ type tsuppress struct {
 	thr Throttler
 }
 
+// NewThrottlerSuppress creates new throttler instance that
+// suppresses provided throttler to never throttle.
 func NewThrottlerSuppress(thr Throttler) Throttler {
 	return tsuppress{thr: thr}
 }
