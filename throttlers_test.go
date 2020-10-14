@@ -25,6 +25,8 @@ const (
 	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
+var trun Runner = NewRunnerAsync(context.Background(), NewThrottlerBuffered(0))
+
 type tcase struct {
 	tms  uint64            // number of sub runs inside one case
 	thr  Throttler         // throttler itself
@@ -773,13 +775,16 @@ func TestThrottlers(t *testing.T) {
 			wg.Add(int(ptrtcase.tms))
 			for i := 0; i < int(ptrtcase.tms); i++ {
 				t.Run(fmt.Sprintf("run %d", i+1), func(t *testing.T) {
-					go func(t *testing.T, index int, tcase *tcase) {
+					go func(index int, tcase *tcase) {
 						defer wg.Done()
 						rdur, rerr := tcase.result(index)
 						dur, err := tcase.run(index)
-						assert.Equal(t, rerr, err)
-						assert.LessOrEqual(t, int64(rdur/2), int64(dur))
-					}(t, i, &ptrtcase)
+						trun.Run(func(context.Context) error {
+							assert.Equal(t, rerr, err)
+							assert.LessOrEqual(t, int64(rdur/2), int64(dur))
+							return nil
+						})
+					}(i, &ptrtcase)
 				})
 			}
 			wg.Wait()
