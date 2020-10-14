@@ -29,7 +29,7 @@ type mtcprometheus struct {
 func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) Metric {
 	mtc := &mtcprometheus{}
 	var api prometheus.API
-	mtc.mempull = cached(cache, func(ctx context.Context) (err error) {
+	mtc.mempull, _ = cached(cache, func(ctx context.Context) (err error) {
 		if api != nil {
 			return mtc.pull(ctx, api, cache, mstep, query)
 		}

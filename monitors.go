@@ -37,7 +37,7 @@ type mntsys struct {
 // with cache interval defined by the provided duration.
 func NewMonitorSystem(cache time.Duration, tp time.Duration) Monitor {
 	mnt := &mntsys{}
-	mnt.memsync = cached(cache, func(ctx context.Context) error {
+	mnt.memsync, _ = cached(cache, func(ctx context.Context) error {
 		return mnt.sync(ctx, tp)
 	})
 	return mnt
