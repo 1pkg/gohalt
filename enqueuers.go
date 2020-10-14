@@ -17,8 +17,11 @@ type Enqueuer interface {
 	Enqueue(context.Context, []byte) error
 }
 
+// msgr defines inner type that creates new message publisher runnable.
+type msgr func([]byte) Runnable
+
 type enqrabbit struct {
-	newrpub    func([]byte) Runnable
+	msgr       msgr
 	connection *amqp.Connection
 	channel    *amqp.Channel
 }
@@ -38,7 +41,7 @@ func NewEnqueuerRabbit(url string, queue string, retries uint64) Enqueuer {
 		return enq.connect(ctx, url, queue, exchange)
 	})
 	var lock sync.Mutex
-	enq.newrpub = func(message []byte) Runnable {
+	enq.msgr = func(message []byte) Runnable {
 		return retried(retries, func(ctx context.Context) error {
 			lock.Lock()
 			defer lock.Unlock()
@@ -69,7 +72,7 @@ func NewEnqueuerRabbit(url string, queue string, retries uint64) Enqueuer {
 }
 
 func (enq *enqrabbit) Enqueue(ctx context.Context, message []byte) error {
-	return enq.newrpub(message)(ctx)
+	return enq.msgr(message)(ctx)
 }
 
 func (enq *enqrabbit) close(context.Context) error {
@@ -110,7 +113,7 @@ func (enq *enqrabbit) connect(_ context.Context, url string, queue string, excha
 }
 
 type enqkafka struct {
-	newrw      func([]byte) Runnable
+	msgr       msgr
 	connection *kafka.Conn
 }
 
@@ -127,7 +130,7 @@ func NewEnqueuerKafka(net string, url string, topic string, retries uint64) Enqu
 		return enq.connect(ctx, net, url, topic)
 	})
 	var lock sync.Mutex
-	enq.newrw = func(message []byte) Runnable {
+	enq.msgr = func(message []byte) Runnable {
 		return retried(retries, func(ctx context.Context) error {
 			lock.Lock()
 			defer lock.Unlock()
@@ -150,7 +153,7 @@ func NewEnqueuerKafka(net string, url string, topic string, retries uint64) Enqu
 }
 
 func (enq *enqkafka) Enqueue(ctx context.Context, message []byte) error {
-	return enq.newrw(message)(ctx)
+	return enq.msgr(message)(ctx)
 }
 
 func (enq *enqkafka) close(context.Context) error {

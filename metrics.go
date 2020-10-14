@@ -17,38 +17,43 @@ type Metric interface {
 	Query(context.Context) (bool, error)
 }
 
+// mtcv defines inner runnable type that returns metric query result and possible error.
+type mtcv func(context.Context) (bool, error)
+
 type mtcprometheus struct {
-	lock    sync.Mutex
-	mempull Runnable
-	value   bool
+	mtcv  mtcv
+	value bool
 }
 
 // NewMetricPrometheus creates prometheus metric querier instance
 // with cache interval defined by the provided duration
-// which executes provided prometheus metric query.
-func NewMetricPrometheus(url string, query string, cache time.Duration, mstep time.Duration) Metric {
+// which executes provided prometheus boolean metric query.
+func NewMetricPrometheus(url string, query string, cache time.Duration) Metric {
 	mtc := &mtcprometheus{}
 	var api prometheus.API
-	mtc.mempull, _ = cached(cache, func(ctx context.Context) (err error) {
-		if api != nil {
-			return mtc.pull(ctx, api, cache, mstep, query)
+	mempull, _ := cached(cache, func(ctx context.Context) (err error) {
+		if api == nil {
+			api, err = mtc.connect(ctx, url)
+			if err != nil {
+				return err
+			}
 		}
-		api, err = mtc.connect(ctx, url)
-		if err != nil {
-			return err
-		}
-		return mtc.pull(ctx, api, cache, mstep, query)
+		return mtc.pull(ctx, api, query)
 	})
+	var lock sync.Mutex
+	mtc.mtcv = func(ctx context.Context) (bool, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := mempull(ctx); err != nil {
+			return mtc.value, err
+		}
+		return mtc.value, nil
+	}
 	return mtc
 }
 
 func (mtc *mtcprometheus) Query(ctx context.Context) (bool, error) {
-	mtc.lock.Lock()
-	defer mtc.lock.Unlock()
-	if err := mtc.mempull(ctx); err != nil {
-		return mtc.value, err
-	}
-	return mtc.value, nil
+	return mtc.mtcv(ctx)
 }
 
 func (mtc *mtcprometheus) connect(_ context.Context, url string) (prometheus.API, error) {
@@ -64,25 +69,22 @@ func (mtc *mtcprometheus) connect(_ context.Context, url string) (prometheus.API
 	return prometheus.NewAPI(client), nil
 }
 
-func (mtc *mtcprometheus) pull(
-	ctx context.Context,
-	api prometheus.API,
-	cache time.Duration,
-	mstep time.Duration,
-	query string,
-) error {
-	timestamp := time.Now().UTC()
-	val, _, err := api.QueryRange(ctx, query, prometheus.Range{
-		Start: timestamp,
-		End:   timestamp.Add(cache),
-		Step:  mstep,
-	})
-	scalar, ok := val.(*model.Scalar)
-	if !ok || (scalar.Value != 0 && scalar.Value != 1) {
-		return fmt.Errorf("boolean metric value expected instead of %v", val)
+func (mtc *mtcprometheus) pull(ctx context.Context, api prometheus.API, query string) error {
+	ts := time.Now().UTC()
+	val, _, err := api.Query(ctx, query, ts)
+	if err != nil {
+		return err
 	}
-	mtc.value = scalar.Value == 1
-	return err
+	vec, ok := val.(model.Vector)
+	if !ok || vec.Len() != 1 {
+		return fmt.Errorf("vector metric with single sample expected instead of %v", val)
+	}
+	value := vec[0].Value
+	if value != 0 && value != 1 {
+		return fmt.Errorf("boolean metric value expected instead of %v", value)
+	}
+	mtc.value = value == 1
+	return nil
 }
 
 type mtcmock struct {

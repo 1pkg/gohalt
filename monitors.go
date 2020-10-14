@@ -2,6 +2,7 @@ package gohalt
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -27,29 +28,37 @@ type Monitor interface {
 	Stats(context.Context) (Stats, error)
 }
 
+// mnts defines inner runnable type that returns stats and possible error.
+type mnts func(context.Context) (Stats, error)
+
 type mntsys struct {
-	lock    sync.Mutex
-	memsync Runnable
-	stats   Stats
+	mnts  mnts
+	stats Stats
 }
 
 // NewMonitorSystem creates system monitor instance
-// with cache interval defined by the provided duration.
+// with cache interval defined by the provided duration
+// and time to process CPU utilization.
 func NewMonitorSystem(cache time.Duration, tp time.Duration) Monitor {
 	mnt := &mntsys{}
-	mnt.memsync, _ = cached(cache, func(ctx context.Context) error {
+	memsync, _ := cached(cache, func(ctx context.Context) error {
 		return mnt.sync(ctx, tp)
 	})
+	var lock sync.Mutex
+	mnt.mnts = func(ctx context.Context) (Stats, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := memsync(ctx); err != nil {
+			return mnt.stats, err
+		}
+		fmt.Println(mnt.stats)
+		return mnt.stats, nil
+	}
 	return mnt
 }
 
 func (mnt *mntsys) Stats(ctx context.Context) (Stats, error) {
-	mnt.lock.Lock()
-	defer mnt.lock.Unlock()
-	if err := mnt.memsync(ctx); err != nil {
-		return mnt.stats, err
-	}
-	return mnt.stats, nil
+	return mnt.mnts(ctx)
 }
 
 func (mnt *mntsys) sync(_ context.Context, tp time.Duration) error {
@@ -61,7 +70,7 @@ func (mnt *mntsys) sync(_ context.Context, tp time.Duration) error {
 		mnt.stats.CPUPause += p
 	}
 	mnt.stats.CPUPause /= 256
-	if percents, err := cpu.Percent(tp, true); err != nil {
+	if percents, err := cpu.Percent(tp, true); err == nil {
 		for _, p := range percents {
 			mnt.stats.CPUUsage += p
 		}
