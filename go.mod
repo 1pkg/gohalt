@@ -1,6 +1,6 @@
 module github.com/1pkg/gohalt
 
-go 1.14
+go 1.15
 
 require (
 	github.com/CloudyKit/jet/v3 v3.0.1 // indirect
