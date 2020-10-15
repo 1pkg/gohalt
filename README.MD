@@ -110,24 +110,24 @@ select {
 If internal context throttler is throttling context done chanel will be closed respectively. **Note** such behavior is implemented by throttler long pooling with the specified frequency, so efficiently there will be additional throttling user in form of long pooling goroutine.
 
 ```go
-	// complex throttler example
-	thr := NewThrottlerAll( // throttles only if all children throttle
-		NewThrottlerPattern(
-			Pattern{ // use throttler only if provided key matches `192.*.*.*` submask
-				Pattern: regexp.MustCompile(`192\.[0-9]+\.[0-9]+\.[0-9]+`),
-				Throttler: NewThrottlerAny( // throttles if any children throttles
-					// throttles only if latency is above 50 millisecond
-					NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
-					// throttles only if cpu usage is above 70%
-					NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{CPUUsage: 0.7}),
-				),
-			},
-		),
-		// throttles each not 3rd call
-		NewThrottlerNot(NewThrottlerEach(3)),
-		// enqueues provided message to queue
-		NewThrottlerEnqueue(NewEnqueuerRabbit("amqp://user:pass@localhost:5672/vhost", "queue", time.Minute)),
-	)
+// complex throttler example
+thr := NewThrottlerAll( // throttles only if all children throttle
+	NewThrottlerPattern(
+		Pattern{ // use throttler only if provided key matches `192.*.*.*` submask
+			Pattern: regexp.MustCompile(`192\.[0-9]+\.[0-9]+\.[0-9]+`),
+			Throttler: NewThrottlerAny( // throttles if any children throttles
+				// throttles only if latency is above 50 millisecond
+				NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
+				// throttles only if cpu usage is above 70%
+				NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{CPUUsage: 0.7}),
+			),
+		},
+	),
+	// throttles each not 3rd call
+	NewThrottlerNot(NewThrottlerEach(3)),
+	// enqueues provided message to queue
+	NewThrottlerEnqueue(NewEnqueuerRabbit("amqp://user:pass@localhost:5672/vhost", "queue", time.Minute)),
+)
 ```
 
 ## Throttlers
