@@ -11,6 +11,8 @@
 [![license](https://img.shields.io/github/license/1pkg/gohalt?cache=1)](LICENSE)
 [![godoc](https://img.shields.io/badge/godoc-godoc-green?cache=1)](https://pkg.go.dev/github.com/1pkg/gohalt?tab=doc)
 
+`go get -u github.com/1pkg/gohalt`
+
 ## Introduction
 
 Gohalt is simple and convenient yet powerful and efficient throttling go library. Gohalt provides various throttlers and surronding tools to build throttling pipelines and rate limiters of any complexity adjusted to your specific needs. Gohalt provides an easy way to integrate throttling and rate limiting with your infrastructure through built in middlewares.
