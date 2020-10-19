@@ -366,7 +366,8 @@ func (thr ttimed) Acquire(ctx context.Context) error {
 }
 
 func (thr ttimed) Release(ctx context.Context) error {
-	return thr.tafter.Release(ctx)
+	_ = thr.tafter.Release(ctx)
+	return nil
 }
 
 type tlatency struct {
@@ -597,7 +598,8 @@ func (thr *tadaptive) Acquire(ctx context.Context) error {
 }
 
 func (thr tadaptive) Release(ctx context.Context) error {
-	return thr.ttimed.Release(ctx)
+	_ = thr.ttimed.Release(ctx)
+	return nil
 }
 
 // Pattern defines a pair of regexp and related throttler.
@@ -628,7 +630,8 @@ func (thr tpattern) Acquire(ctx context.Context) error {
 func (thr tpattern) Release(ctx context.Context) error {
 	for _, pattern := range thr {
 		if key := ctxKey(ctx); pattern.Pattern.MatchString(key) {
-			return pattern.Throttler.Release(ctx)
+			_ = pattern.Throttler.Release(ctx)
+			return nil
 		}
 	}
 	return nil
@@ -659,7 +662,7 @@ func (thr *tring) Release(ctx context.Context) error {
 	if length := len(thr.thrs); length > 0 {
 		release := atomicIncr(&thr.release) - 1
 		index := int(release) % length
-		return thr.thrs[index].Release(ctx)
+		_ = thr.thrs[index].Release(ctx)
 	}
 	return nil
 }
@@ -791,5 +794,33 @@ func (thr tretry) Acquire(ctx context.Context) error {
 
 func (thr tretry) Release(ctx context.Context) error {
 	_ = thr.thr.Release(ctx)
+	return nil
+}
+
+type tcache struct {
+	thr     Throttler
+	acquire Runnable
+	reset   Runnable
+}
+
+// NewThrottlerCache creates new throttler instance that
+// caches provided throttler calls for the provided cache duration,
+// throttler release resulting resets cache.
+// Only non throttling calls are cached for the provided cache duration.
+func NewThrottlerCache(thr Throttler, cache time.Duration) Throttler {
+	tcache := tcache{thr: thr}
+	tcache.acquire, tcache.reset = cached(cache, func(ctx context.Context) error {
+		return thr.Acquire(ctx)
+	})
+	return tcache
+}
+
+func (thr tcache) Acquire(ctx context.Context) error {
+	return thr.acquire(ctx)
+}
+
+func (thr tcache) Release(ctx context.Context) error {
+	_ = thr.thr.Release(ctx)
+	_ = thr.reset(ctx)
 	return nil
 }
