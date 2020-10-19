@@ -31,6 +31,7 @@ type enqrabbit struct {
 // which enqueues provided message to the specified queue.
 // New unique exchange `gohalt_exchange_{{uuid}}` is created for each new enqueuer,
 // new unique message id `gohalt_enqueue_{{uuid}}` is created for each new message.
+// Only successful connections are cached.
 func NewEnqueuerRabbit(url string, queue string, retries uint64) Enqueuer {
 	exchange := fmt.Sprintf("gohalt_exchange_%s", uuid.NewV4())
 	enq := &enqrabbit{}
@@ -121,6 +122,7 @@ type enqkafka struct {
 // with cached connection and failure retries
 // which enqueues provided message to the specified topic.
 // New unique message key `gohalt_enqueue_{{uuid}}` is created for each new message.
+// Only successful connections are cached.
 func NewEnqueuerKafka(net string, url string, topic string, retries uint64) Enqueuer {
 	enq := &enqkafka{}
 	memconnect, reset := cached(0, func(ctx context.Context) error {

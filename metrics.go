@@ -27,7 +27,8 @@ type mtcprometheus struct {
 
 // NewMetricPrometheus creates prometheus metric querier instance
 // with cache interval defined by the provided duration
-// which executes provided prometheus boolean metric query.
+// which executes provided prometheus boolean metric query and cache it.
+// Only successful metric results are cached.
 func NewMetricPrometheus(url string, query string, cache time.Duration) Metric {
 	mtc := &mtcprometheus{}
 	var api prometheus.API

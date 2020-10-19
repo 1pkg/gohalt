@@ -59,7 +59,7 @@ func cached(cache time.Duration, run Runnable) (cached Runnable, reset Runnable)
 	var lock uint64
 	cached = func(ctx context.Context) error {
 		ts := atomicGet(&lock)
-		now := uint64(time.Now().UTC().Unix())
+		now := uint64(time.Now().UTC().UnixNano())
 		// on first call run no matters what
 		if ts == 0 {
 			if err := run(ctx); err != nil {

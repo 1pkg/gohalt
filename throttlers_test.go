@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -25,12 +25,13 @@ const (
 	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
-var trun Runner = NewRunnerAsync(context.Background(), NewThrottlerBuffered(0))
+var trun Runner = NewRunnerSync(context.Background(), NewThrottlerBuffered(1))
 
 type tcase struct {
 	tms  uint64            // number of sub runs inside one case
 	thr  Throttler         // throttler itself
 	acts []Runnable        // actions that need to be throttled
+	ins  []Runnable        // actions that need to be run inside throttle
 	pres []Runnable        // actions that neeed to be run before throttle
 	tss  []time.Duration   // timestamps that needs to be applied to contexts set
 	ctxs []context.Context // contexts set for throttling
@@ -38,6 +39,7 @@ type tcase struct {
 	durs []time.Duration   // expected throttler durations
 	idx  uint64            // carries seq number of sub run execution
 	over bool              // if throttler needs to be over released
+	pass bool              // if throttler doesn't need to be released
 }
 
 func (t *tcase) run(index int) (dur time.Duration, err error) {
@@ -71,6 +73,12 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 			ctx = WithTimestamp(ctx, time.Now().Add(t.tss[index]))
 		}
 		err = t.thr.Acquire(ctx)
+		// run additional in action only if present
+		if index < len(t.ins) {
+			if in := t.ins[index]; in != nil {
+				_ = in(ctx)
+			}
+		}
 	}()
 	dur = time.Since(ts)
 	// run additional action only if present
@@ -82,6 +90,9 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 	limit := 1
 	if t.over && uint64(index+1) == t.tms { // imitate over releasing on last call
 		limit = index + 1
+	}
+	if t.pass {
+		limit = 0
 	}
 	for i := 0; i < limit; i++ {
 		if err := t.thr.Release(ctx); err != nil {
@@ -783,7 +794,7 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerSuppress(NewThrottlerEcho(nil)),
 		},
-		"Throttler retry should throttle on recuring internal error": {
+		"Throttler retry should throttle on recurring internal error": {
 			tms: 3,
 			thr: NewThrottlerRetry(NewThrottlerEcho(errors.New("test")), 2),
 			errs: []error{
@@ -792,13 +803,47 @@ func TestThrottlers(t *testing.T) {
 				errors.New("test"),
 			},
 		},
-		"Throttler retry should not throttle on retried recuring internal error": {
+		"Throttler retry should not throttle on retried recurring internal error": {
 			tms: 3,
-			thr: NewThrottlerRetry(NewThrottlerAfter(3), 2),
+			thr: NewThrottlerRetry(NewThrottlerBefore(3), 2),
 			errs: []error{
-				errors.New("test"),
+				errors.New("throttler has not reached threshold yet"),
 				nil,
 				nil,
+			},
+		},
+		"Throttler cache should not throttle on cached throttler": {
+			tms: 3,
+			thr: NewThrottlerCache(NewThrottlerAfter(1), ms30_0),
+			errs: []error{
+				nil,
+				nil,
+				nil,
+			},
+			pass: true,
+		},
+		"Throttler cache should throttle on close to zero cached throttler": {
+			tms: 3,
+			thr: NewThrottlerCache(NewThrottlerAfter(2), ms1_0),
+			ins: []Runnable{
+				delayed(ms2_0, nope),
+				delayed(ms2_0, nope),
+				delayed(ms2_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				errors.New("throttler has exceed threshold"),
+			},
+			pass: true,
+		},
+		"Throttler cache should throttle on cached throttler": {
+			tms: 3,
+			thr: NewThrottlerCache(NewThrottlerAfter(1), ms30_0),
+			errs: []error{
+				nil,
+				errors.New("throttler has exceed threshold"),
+				errors.New("throttler has exceed threshold"),
 			},
 		},
 	}
@@ -813,8 +858,8 @@ func TestThrottlers(t *testing.T) {
 						rdur, rerr := tcase.result(index)
 						dur, err := tcase.run(index)
 						trun.Run(func(context.Context) error {
-							assert.Equal(t, rerr, err)
-							assert.LessOrEqual(t, int64(rdur/2), int64(dur))
+							require.Equal(t, rerr, err)
+							require.LessOrEqual(t, int64(rdur/2), int64(dur))
 							return nil
 						})
 					}(i, &ptrtcase)

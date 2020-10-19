@@ -38,6 +38,7 @@ type mntsys struct {
 // NewMonitorSystem creates system monitor instance
 // with cache interval defined by the provided duration
 // and time to process CPU utilization.
+// Only successful stats results are cached.
 func NewMonitorSystem(cache time.Duration, tp time.Duration) Monitor {
 	mnt := &mntsys{}
 	memsync, _ := cached(cache, func(ctx context.Context) error {
