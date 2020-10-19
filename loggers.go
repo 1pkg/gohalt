@@ -12,6 +12,6 @@ var DefaultLogger Logger = stdlog.Printf
 
 func log(format string, v ...interface{}) {
 	if DefaultLogger != nil {
-		DefaultLogger(format, v)
+		DefaultLogger(format, v...)
 	}
 }
