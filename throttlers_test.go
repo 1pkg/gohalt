@@ -68,7 +68,7 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 		ts = time.Now()
 		// force strict acquire order
 		for index != int(atomicGet(&t.idx)) {
-			time.Sleep(time.Microsecond)
+			sleep(ctx, time.Microsecond)
 		}
 		// set additional timestamp only if present
 		if index < len(t.tss) {
@@ -167,6 +167,25 @@ func TestThrottlers(t *testing.T) {
 				ms0_9 * 16,
 				ms0_9,
 			},
+		},
+		"Throttler jitter should sleep for correct time periods": {
+			tms: 3,
+			thr: NewThrottlerJitter(ms1_0, 0, false, 0.0),
+			durs: []time.Duration{
+				ms0_9,
+				ms0_9,
+				ms0_9,
+			},
+		},
+		"Throttler jitter should sleep for random time periods": {
+			tms: 3,
+			thr: NewThrottlerJitter(ms1_0, 0, false, 1.9),
+			durs: []time.Duration{
+				ms0_0,
+				ms0_0,
+				ms0_0,
+			},
+			pass: true,
 		},
 		"Throttler context should throttle on canceled context": {
 			tms: 3,

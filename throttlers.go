@@ -62,8 +62,8 @@ func NewThrottlerWait(duration time.Duration) Throttler {
 	return twait{duration: duration}
 }
 
-func (thr twait) Acquire(context.Context) error {
-	time.Sleep(thr.duration)
+func (thr twait) Acquire(ctx context.Context) error {
+	sleep(ctx, thr.duration)
 	return nil
 }
 
@@ -72,36 +72,78 @@ func (thr twait) Release(context.Context) error {
 }
 
 type tsquare struct {
-	duration time.Duration
+	delayer  delayer
+	duration uint64
+	initial  time.Duration
 	limit    time.Duration
 	current  uint64
 	reset    bool
 }
 
 // NewThrottlerSquare creates new throttler instance that
-// always waits for square growing [1, 4, 9, 16, ...] multiplier on the specified duration,
+// always waits for square growing [1, 4, 9, 16, ...] multiplier on the specified initial duration,
 // up until the specified duration limit is reached.
 // If reset is set then after throttler riches the specified duration limit
 // next multiplier value will be reseted.
-func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler {
-	return &tsquare{duration: duration, limit: limit, reset: reset}
+func NewThrottlerSquare(initial time.Duration, limit time.Duration, reset bool) Throttler {
+	return &tsquare{delayer: sleep, initial: initial, limit: limit, reset: reset}
 }
 
-func (thr *tsquare) Acquire(context.Context) error {
+func (thr *tsquare) Acquire(ctx context.Context) error {
 	current := atomicBIncr(&thr.current)
-	duration := thr.duration * time.Duration(current*current)
+	duration := thr.initial * time.Duration(current*current)
 	if thr.limit > 0 && duration > thr.limit {
 		duration = thr.limit
 		if thr.reset {
 			atomicSet(&thr.current, 0)
 		}
 	}
-	time.Sleep(duration)
+	atomicSet(&thr.duration, uint64(duration))
+	thr.delayer(ctx, duration)
 	return nil
 }
 
 func (thr *tsquare) Release(context.Context) error {
 	atomicBDecr(&thr.current)
+	return nil
+}
+
+type tjitter struct {
+	*tsquare
+	jitter float64
+}
+
+// NewThrottlerJitter creates new throttler instance that
+// waits accordingly to undelying square throttler but also
+// adds the provided jitter delta distribution on top.
+// Jitter value is normalized to [0.0, 1.0] range and defines
+// which part of square delay could be randomized in percents.
+// Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.
+func NewThrottlerJitter(initial time.Duration, limit time.Duration, reset bool, jitter float64) Throttler {
+	jitter = math.Abs(jitter)
+	if jitter > 1.0 {
+		jitter = 1.0
+	}
+	jitter = 1.0 - jitter
+	thr := &tjitter{jitter: jitter}
+	thr.tsquare = NewThrottlerSquare(initial, limit, reset).(*tsquare)
+	// we need to patch parent square to avoid sleeping
+	// and use jittered calculated duration instead
+	thr.delayer = vigil
+	return thr
+}
+
+func (thr *tjitter) Acquire(ctx context.Context) error {
+	_ = thr.tsquare.Acquire(ctx)
+	duration := float64(atomicGet(&thr.duration))
+	base := duration * thr.jitter
+	side := (duration - base) * rand.Float64()
+	sleep(ctx, time.Duration(base+side))
+	return nil
+}
+
+func (thr *tjitter) Release(ctx context.Context) error {
+	_ = thr.tsquare.Release(ctx)
 	return nil
 }
 
@@ -580,11 +622,9 @@ func NewThrottlerAdaptive(
 	step uint64,
 	thr Throttler,
 ) Throttler {
-	return &tadaptive{
-		ttimed: NewThrottlerTimed(threshold, interval, quantum).(ttimed),
-		step:   step,
-		thr:    thr,
-	}
+	tadaptive := &tadaptive{step: step, thr: thr}
+	tadaptive.ttimed = NewThrottlerTimed(threshold, interval, quantum).(ttimed)
+	return tadaptive
 }
 
 func (thr *tadaptive) Acquire(ctx context.Context) error {

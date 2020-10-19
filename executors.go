@@ -39,7 +39,7 @@ func loop(period time.Duration, run Runnable) Runnable {
 
 func delayed(after time.Duration, run Runnable) Runnable {
 	return func(ctx context.Context) error {
-		time.Sleep(after)
+		sleep(ctx, after)
 		return run(ctx)
 	}
 }

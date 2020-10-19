@@ -136,7 +136,8 @@ thr := NewThrottlerAll( // throttles only if all children throttle
 |---|---|---|
 | echo | `func NewThrottlerEcho(err error) Throttler` | Always throttles with the specified error back. |
 | wait | `func NewThrottlerWait(duration time.Duration) Throttler` | Always waits for the specified duration. |
-| square | `func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler` | Always waits for square growing *[1, 4, 9, 16, ...]* multiplier on the specified duration, up until the specified duration limit is reached.<br> If reset is set then after throttler riches the specified duration limit next multiplier value will be reseted. |
+| square | `func NewThrottlerSquare(duration time.Duration, limit time.Duration, reset bool) Throttler` | Always waits for square growing *[1, 4, 9, 16, ...]* multiplier on the specified initial duration, up until the specified duration limit is reached.<br> If reset is set then after throttler riches the specified duration limit next multiplier value will be reseted. |
+| jitter | `func NewThrottlerJitter(initial time.Duration, limit time.Duration, reset bool, jitter float64) Throttler` | Waits accordingly to undelying square throttler but also adds the provided jitter delta distribution on top.<br> Jitter value is normalized to [0.0, 1.0] range and defines which part of square delay could be randomized in percents.<br> Implementation uses `math/rand` as PRNG function and expects rand seeding by a client. |
 | context | `func NewThrottlerContext() Throttler` | Always throttless on *done* context. |
 | panic | `func NewThrottlerPanic() Throttler` | Always panics. |
 | each | `func NewThrottlerEach(threshold uint64) Throttler` | Throttles each periodic *i-th* call defined by the specified threshold. |
