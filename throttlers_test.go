@@ -102,6 +102,7 @@ func (t *tcase) result(index int) (dur time.Duration, err error) {
 }
 
 func TestThrottlers(t *testing.T) {
+	DefaultRetriedDuration = time.Millisecond
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	table := map[string]tcase{
@@ -774,13 +775,31 @@ func TestThrottlers(t *testing.T) {
 				errors.New("throttler hasn't received any internal error"),
 			},
 		},
-		"Throttler suppress should not throttle on internal errors": {
+		"Throttler suppress should not throttle on internal error": {
 			tms: 3,
 			thr: NewThrottlerSuppress(NewThrottlerEcho(errors.New("test"))),
 		},
-		"Throttler suppress should throttle on non internal errors": {
+		"Throttler suppress should throttle on non internal error": {
 			tms: 3,
 			thr: NewThrottlerSuppress(NewThrottlerEcho(nil)),
+		},
+		"Throttler retry should throttle on recuring internal error": {
+			tms: 3,
+			thr: NewThrottlerRetry(NewThrottlerEcho(errors.New("test")), 2),
+			errs: []error{
+				errors.New("test"),
+				errors.New("test"),
+				errors.New("test"),
+			},
+		},
+		"Throttler retry should not throttle on retried recuring internal error": {
+			tms: 3,
+			thr: NewThrottlerRetry(NewThrottlerAfter(3), 2),
+			errs: []error{
+				errors.New("test"),
+				nil,
+				nil,
+			},
 		},
 	}
 	for tname, ptrtcase := range table {
