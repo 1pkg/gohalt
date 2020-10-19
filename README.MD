@@ -159,6 +159,7 @@ thr := NewThrottlerAll( // throttles only if all children throttle
 | any | `func NewThrottlerAny(thrs ...Throttler) Throttler` | Throttles call if any of provided throttlers throttle. |
 | not | `func NewThrottlerNot(thr Throttler) Throttler` | Throttles call if provided throttler doesn't throttle. |
 | suppress | `func NewThrottlerSuppress(thr Throttler) Throttler` | Suppresses provided throttler to never throttle. |
+| retry | `func NewThrottlerRetry(thr Throttler, retries uint64) Throttler` | Retries provided throttler error up until the provided retries threshold.<br> Internally retry uses square throttler with `DefaultRetriedDuration` initial duration. |
 
 ## Integrations
 

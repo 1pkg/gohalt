@@ -770,3 +770,26 @@ func (thr tsuppress) Release(ctx context.Context) error {
 	_ = thr.thr.Release(ctx)
 	return nil
 }
+
+type tretry struct {
+	thr     Throttler
+	retries uint64
+}
+
+// NewThrottlerRetry creates new throttler instance that
+// retries provided throttler error up until the provided retries threshold.
+// Internally retry uses square throttler with `DefaultRetriedDuration` initial duration.
+func NewThrottlerRetry(thr Throttler, retries uint64) Throttler {
+	return tretry{thr: thr, retries: retries}
+}
+
+func (thr tretry) Acquire(ctx context.Context) error {
+	return retried(thr.retries, func(ctx context.Context) error {
+		return thr.thr.Acquire(ctx)
+	})(ctx)
+}
+
+func (thr tretry) Release(ctx context.Context) error {
+	_ = thr.thr.Release(ctx)
+	return nil
+}
