@@ -21,7 +21,9 @@ const (
 	ms4_0  time.Duration = 4 * time.Millisecond
 	ms5_0  time.Duration = 5 * time.Millisecond
 	ms7_0  time.Duration = 7 * time.Millisecond
+	ms8_0  time.Duration = 8 * time.Millisecond
 	ms9_0  time.Duration = 9 * time.Millisecond
+	ms10_0 time.Duration = 10 * time.Millisecond
 	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
@@ -296,13 +298,13 @@ func TestThrottlers(t *testing.T) {
 			tms: 7,
 			thr: NewThrottlerPriority(5, 2),
 			acts: []Runnable{
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
+				delayed(ms3_0, nope),
 			},
 			ctxs: []context.Context{
 				WithPriority(context.Background(), 1),
@@ -316,11 +318,11 @@ func TestThrottlers(t *testing.T) {
 			durs: []time.Duration{
 				0,
 				0,
-				ms0_9,
+				ms2_0,
 				0,
 				0,
 				0,
-				ms0_9,
+				ms2_0,
 			},
 		},
 		"Throttler timed should throttle after threshold": {
@@ -351,16 +353,16 @@ func TestThrottlers(t *testing.T) {
 			tms: 6,
 			thr: NewThrottlerTimed(
 				2,
+				ms8_0,
 				ms4_0,
-				ms2_0,
 			),
 			pres: []Runnable{
 				nil,
 				nil,
 				nil,
-				delayed(ms3_0, nope),
+				delayed(ms5_0, nope),
 				nil,
-				delayed(ms7_0, nope),
+				delayed(ms10_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -858,6 +860,8 @@ func TestThrottlers(t *testing.T) {
 						rdur, rerr := tcase.result(index)
 						dur, err := tcase.run(index)
 						trun.Run(func(context.Context) error {
+							log("expected error %v actual err %v", rerr, err)
+							log("expected duration le %s actual duration %s", rdur/2, dur)
 							require.Equal(t, rerr, err)
 							require.LessOrEqual(t, int64(rdur/2), int64(dur))
 							return nil
