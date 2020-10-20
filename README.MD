@@ -21,7 +21,7 @@ Gohalt is simple and convenient yet powerful and efficient throttling go library
 
 - [x] Blastly fast and efficient, Gohalt has minimal performance overhead, it was design with performance as the primary goal.
 - [x] Flexible and powerful, Gohalt supports numbers of different throttling strategies and conditions that could be easily combined and customized to match your needs [link](#Throttlers).
-- [x] Easy to integrate, Gohalt provides numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
+- [x] Easy to integrate, Gohalt provides separate package with numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
 - [x] Metrics awareness, Gohalt could use Prometheus metrics as a conditions for throttling.
 - [x] Queueing and delayed processing, Gohalt supports throttling queueing which means you can easily save throttled query to rabbitmq/kafka stream to process it later.
 
@@ -164,6 +164,10 @@ thr := NewThrottlerAll( // throttles only if all children throttle
 | cache | `func NewThrottlerCache(thr Throttler, cache time.Duration) Throttler` | Caches provided throttler calls for the provided cache duration, throttler release resulting resets cache.<br> Only non throttling calls are cached for the provided cache duration. |
 
 ## Integrations
+
+**Note:** in gohalt v0.3.0 all integrations were moved to separate [repository](https://github.com/1pkg/gohaltlib) to make base gohalt repository dependencies footprint small.
+
+`go get -u github.com/1pkg/gohaltlib`
 
 | Library | Adapter |
 |---|---|
