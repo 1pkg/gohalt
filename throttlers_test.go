@@ -198,6 +198,24 @@ func TestThrottlers(t *testing.T) {
 			},
 			pass: true,
 		},
+		"Throttler jitter should sleep for correct time periods with reset": {
+			tms: 5,
+			thr: NewThrottlerJitter(ms1_0, 20*ms1_0, true, 0.0),
+			acts: []Runnable{
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+				delayed(ms30_0, nope),
+			},
+			durs: []time.Duration{
+				ms0_9,
+				ms0_9 * 4,
+				ms0_9 * 9,
+				ms0_9 * 16,
+				ms0_9,
+			},
+		},
 		"Throttler context should throttle on canceled context": {
 			tms: 3,
 			thr: NewThrottlerContext(),
@@ -984,16 +1002,34 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler retry should throttle on recurring internal error": {
 			tms: 3,
-			thr: NewThrottlerRetry(NewThrottlerEcho(testerr), 2),
+			thr: NewThrottlerRetry(NewThrottlerEcho(testerr), 2, true),
 			errs: []error{
 				testerr,
 				testerr,
 				testerr,
 			},
 		},
-		"Throttler retry should not throttle on retried recurring internal error": {
+		"Throttler retry should throttle on retried recurring internal error": {
 			tms: 3,
-			thr: NewThrottlerRetry(NewThrottlerBefore(3), 2),
+			thr: NewThrottlerRetry(NewThrottlerBefore(3), 2, false),
+			errs: []error{
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 1, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 2, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 3, threshold: 3},
+				},
+			},
+		},
+		"Throttler retry should not throttle on retried recurring internal error with onthreshold": {
+			tms: 3,
+			thr: NewThrottlerRetry(NewThrottlerBefore(3), 2, true),
 			errs: []error{
 				ErrorThreshold{
 					Throttler: "before",
