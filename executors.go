@@ -39,7 +39,9 @@ func loop(period time.Duration, run Runnable) Runnable {
 
 func delayed(after time.Duration, run Runnable) Runnable {
 	return func(ctx context.Context) error {
-		sleep(ctx, after)
+		if err := sleep(ctx, after); err != nil {
+			return err
+		}
 		return run(ctx)
 	}
 }
@@ -137,4 +139,9 @@ func gorun(ctx context.Context, r Runnable) {
 	go func() {
 		_ = r(ctx)
 	}()
+}
+
+func sleep(_ context.Context, dur time.Duration) error {
+	time.Sleep(dur)
+	return nil
 }

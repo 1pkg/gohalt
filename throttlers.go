@@ -62,8 +62,7 @@ func NewThrottlerWait(duration time.Duration) Throttler {
 }
 
 func (thr twait) Acquire(ctx context.Context) error {
-	sleep(ctx, thr.duration)
-	return nil
+	return sleep(ctx, thr.duration)
 }
 
 func (thr twait) Release(context.Context) error {
@@ -71,12 +70,10 @@ func (thr twait) Release(context.Context) error {
 }
 
 type tsquare struct {
-	delayer  delayer
-	duration uint64
-	initial  time.Duration
-	limit    time.Duration
-	current  uint64
-	reset    bool
+	initial time.Duration
+	limit   time.Duration
+	current uint64
+	reset   bool
 }
 
 // NewThrottlerSquare creates new throttler instance that
@@ -85,7 +82,7 @@ type tsquare struct {
 // If reset is set then after throttler riches the specified duration limit
 // next multiplier value will be reseted.
 func NewThrottlerSquare(initial time.Duration, limit time.Duration, reset bool) Throttler {
-	return &tsquare{delayer: sleep, initial: initial, limit: limit, reset: reset}
+	return &tsquare{initial: initial, limit: limit, reset: reset}
 }
 
 func (thr *tsquare) Acquire(ctx context.Context) error {
@@ -97,9 +94,7 @@ func (thr *tsquare) Acquire(ctx context.Context) error {
 			atomicSet(&thr.current, 0)
 		}
 	}
-	atomicSet(&thr.duration, uint64(duration))
-	thr.delayer(ctx, duration)
-	return nil
+	return sleep(ctx, duration)
 }
 
 func (thr *tsquare) Release(context.Context) error {
@@ -108,8 +103,11 @@ func (thr *tsquare) Release(context.Context) error {
 }
 
 type tjitter struct {
-	*tsquare
-	jitter float64
+	initial time.Duration
+	limit   time.Duration
+	current uint64
+	reset   bool
+	jitter  float64
 }
 
 // NewThrottlerJitter creates new throttler instance that
@@ -124,25 +122,26 @@ func NewThrottlerJitter(initial time.Duration, limit time.Duration, reset bool, 
 		jitter = 1.0
 	}
 	jitter = 1.0 - jitter
-	thr := &tjitter{jitter: jitter}
-	thr.tsquare = NewThrottlerSquare(initial, limit, reset).(*tsquare)
-	// we need to patch parent square to avoid sleeping
-	// and use jittered calculated duration instead
-	thr.delayer = vigil
+	thr := &tjitter{initial: initial, limit: limit, reset: reset, jitter: jitter}
 	return thr
 }
 
 func (thr *tjitter) Acquire(ctx context.Context) error {
-	_ = thr.tsquare.Acquire(ctx)
-	duration := float64(atomicGet(&thr.duration))
-	base := duration * thr.jitter
-	side := (duration - base) * rand.Float64()
-	sleep(ctx, time.Duration(base+side))
-	return nil
+	current := atomicBIncr(&thr.current)
+	duration := thr.initial * time.Duration(current*current)
+	if thr.limit > 0 && duration > thr.limit {
+		duration = thr.limit
+		if thr.reset {
+			atomicSet(&thr.current, 0)
+		}
+	}
+	base := float64(duration) * thr.jitter
+	side := (float64(duration) - base) * rand.Float64()
+	return sleep(ctx, time.Duration(base+side))
 }
 
 func (thr *tjitter) Release(ctx context.Context) error {
-	_ = thr.tsquare.Release(ctx)
+	atomicBDecr(&thr.current)
 	return nil
 }
 
