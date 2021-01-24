@@ -35,6 +35,19 @@ func (d strdurations) String() string {
 	return fmt.Sprintf("%s out of %s", d.current, d.threshold)
 }
 
+type strtimes struct {
+	current   time.Time
+	threshold time.Time
+}
+
+func (d strtimes) String() string {
+	return fmt.Sprintf(
+		"%s out of %s",
+		d.current.Format(time.RFC3339Nano),
+		d.threshold.Format(time.RFC3339Nano),
+	)
+}
+
 type strstats struct {
 	current   Stats
 	threshold Stats

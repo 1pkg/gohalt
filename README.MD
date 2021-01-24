@@ -149,6 +149,8 @@ You can find list of returning error types for all existing throttlers in thrott
 | each | `func NewThrottlerEach(threshold uint64) Throttler` | Throttles each periodic *i-th* call defined by the specified threshold.<br> - could return `ErrorThreshold`; |
 | before | `func NewThrottlerBefore(threshold uint64) Throttler` | Throttles each call below the *i-th* call defined by the specified threshold.<br> - could return `ErrorThreshold`; |
 | after | `func NewThrottlerAfter(threshold uint64) Throttler` | Throttles each call after the *i-th* call defined by the specified threshold.<br> - could return `ErrorThreshold`; |
+| past | `func NewThrottlerPast(threshold time.Time) Throttler` | Throttles each call befor timestamp defined by the specified UTC time threshold.<br> - could return `ErrorThreshold`; |
+| future | `func NewThrottlerFuture(threshold time.Time) Throttler` | Throttles each call after timestamp defined by the specified UTC time threshold.<br> - could return `ErrorThreshold`; |
 | chance | `func NewThrottlerChance(threshold float64) Throttler` | Throttles each call with the chance *p* defined by the specified threshold.<br> Chance value is normalized to *[0.0, 1.0]* range.<br> Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.<br> - could return `ErrorThreshold`; |
 | running | `func NewThrottlerRunning(threshold uint64) Throttler` | Throttles each call which exeeds the running quota *acquired - release* *q* defined by the specified threshold.<br> - could return `ErrorThreshold`; |
 | buffered | `func NewThrottlerBuffered(threshold uint64) Throttler` | Waits on call which exeeds the running quota *acquired - release* *q* defined by the specified threshold until the running quota is available again. |

@@ -263,6 +263,56 @@ func (thr *tafter) Release(context.Context) error {
 	return nil
 }
 
+type tpast struct {
+	threshold time.Time
+}
+
+// NewThrottlerPast creates new throttler instance that
+// throttles each call before timestamp defined by the specified UTC time threshold.
+// - could return `ErrorThreshold`;
+func NewThrottlerPast(threshold time.Time) Throttler {
+	return tpast{threshold: threshold.UTC()}
+}
+
+func (thr tpast) Acquire(ctx context.Context) error {
+	if ts := ctxTimestamp(ctx); ts.UnixNano() <= thr.threshold.UnixNano() {
+		return ErrorThreshold{
+			Throttler: "past",
+			Threshold: strtimes{current: ts, threshold: thr.threshold},
+		}
+	}
+	return nil
+}
+
+func (thr tpast) Release(context.Context) error {
+	return nil
+}
+
+type tfuture struct {
+	threshold time.Time
+}
+
+// NewThrottlerFuture creates new throttler instance that
+// throttles each call after timestamp defined by the specified UTC time threshold.
+// - could return `ErrorThreshold`;
+func NewThrottlerFuture(threshold time.Time) Throttler {
+	return tfuture{threshold: threshold.UTC()}
+}
+
+func (thr tfuture) Acquire(ctx context.Context) error {
+	if ts := ctxTimestamp(ctx); ts.UnixNano() > thr.threshold.UnixNano() {
+		return ErrorThreshold{
+			Throttler: "future",
+			Threshold: strtimes{current: ts, threshold: thr.threshold},
+		}
+	}
+	return nil
+}
+
+func (thr tfuture) Release(context.Context) error {
+	return nil
+}
+
 type tchance struct {
 	threshold float64
 }
