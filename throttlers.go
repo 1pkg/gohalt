@@ -896,22 +896,34 @@ func (thr tsuppress) Release(ctx context.Context) error {
 }
 
 type tretry struct {
-	thr     Throttler
-	retries uint64
+	thr         Throttler
+	retries     uint64
+	onthreshold bool
 }
 
 // NewThrottlerRetry creates new throttler instance that
 // retries provided throttler error up until the provided retries threshold.
+// If provided onthreshold flag is set even `ErrorThreshold` errors will be retried.
 // Internally retry uses square throttler with `DefaultRetriedDuration` initial duration.
 // - could return any underlying throttler error;
-func NewThrottlerRetry(thr Throttler, retries uint64) Throttler {
-	return tretry{thr: thr, retries: retries}
+func NewThrottlerRetry(thr Throttler, retries uint64, onthreshold bool) Throttler {
+	return tretry{thr: thr, retries: retries, onthreshold: onthreshold}
 }
 
-func (thr tretry) Acquire(ctx context.Context) error {
-	return retried(thr.retries, func(ctx context.Context) error {
-		return thr.thr.Acquire(ctx)
+func (thr tretry) Acquire(ctx context.Context) (err error) {
+	_ = retried(thr.retries, func(ctx context.Context) error {
+		err = thr.thr.Acquire(ctx)
+		switch err.(type) {
+		case ErrorThreshold:
+			if thr.onthreshold {
+				return err
+			}
+			return nil
+		default:
+			return err
+		}
 	})(ctx)
+	return
 }
 
 func (thr tretry) Release(ctx context.Context) error {
