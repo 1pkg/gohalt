@@ -62,7 +62,7 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 		defer atomicIncr(&t.idx)
 		defer func() {
 			if msg := recover(); msg != nil {
-				err = errors.New(msg.(string))
+				err = msg.(ErrorInternal)
 			}
 		}()
 		ts = time.Now()
@@ -75,6 +75,16 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 			ctx = WithTimestamp(ctx, time.Now().Add(t.tss[index]))
 		}
 		err = t.thr.Acquire(ctx)
+		// in case of threshold error
+		if terr, ok := err.(ErrorThreshold); ok {
+			// check whether it's durations threshold
+			if durs, ok := terr.Threshold.(strdurations); ok {
+				// then round current values to milliseconds
+				durs.current = durs.current.Round(time.Millisecond)
+				terr.Threshold = durs
+				err = terr
+			}
+		}
 		// run additional in action only if present
 		if index < len(t.ins) {
 			if in := t.ins[index]; in != nil {
@@ -118,6 +128,7 @@ func TestThrottlers(t *testing.T) {
 	DefaultRetriedDuration = time.Millisecond
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	testerr := errors.New("test")
 	table := map[string]tcase{
 		"Throttler echo should not throttle on nil input": {
 			tms: 3,
@@ -125,11 +136,11 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler echo should throttle on not nil input": {
 			tms: 3,
-			thr: NewThrottlerEcho(errors.New("test")),
+			thr: NewThrottlerEcho(testerr),
 			errs: []error{
-				errors.New("test"),
-				errors.New("test"),
-				errors.New("test"),
+				testerr,
+				testerr,
+				testerr,
 			},
 		},
 		"Throttler wait should sleep for millisecond": {
@@ -196,18 +207,18 @@ func TestThrottlers(t *testing.T) {
 				cctx,
 			},
 			errs: []error{
-				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+				ErrorInternal{Throttler: "context", Message: cctx.Err().Error()},
 				nil,
-				fmt.Errorf("throttler has received context error %w", cctx.Err()),
+				ErrorInternal{Throttler: "context", Message: cctx.Err().Error()},
 			},
 		},
 		"Throttler panic should panic": {
 			tms: 3,
 			thr: NewThrottlerPanic(),
 			errs: []error{
-				errors.New("throttler has reached panic"),
-				errors.New("throttler has reached panic"),
-				errors.New("throttler has reached panic"),
+				ErrorInternal{Throttler: "panic"},
+				ErrorInternal{Throttler: "panic"},
+				ErrorInternal{Throttler: "panic"},
 			},
 		},
 		"Throttler each should throttle on threshold": {
@@ -216,19 +227,34 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has reached periodic threshold"),
+				ErrorThreshold{
+					Throttler: "each",
+					Threshold: strpair{current: 3, threshold: 3},
+				},
 				nil,
 				nil,
-				errors.New("throttler has reached periodic threshold"),
+				ErrorThreshold{
+					Throttler: "each",
+					Threshold: strpair{current: 6, threshold: 3},
+				},
 			},
 		},
 		"Throttler before should throttle before threshold": {
 			tms: 6,
 			thr: NewThrottlerBefore(3),
 			errs: []error{
-				errors.New("throttler has not reached threshold yet"),
-				errors.New("throttler has not reached threshold yet"),
-				errors.New("throttler has not reached threshold yet"),
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 1, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 2, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 3, threshold: 3},
+				},
 				nil,
 				nil,
 				nil,
@@ -241,27 +267,54 @@ func TestThrottlers(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 4, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 5, threshold: 3},
+				},
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 6, threshold: 3},
+				},
 			},
 		},
 		"Throttler chance should throttle on 1": {
 			tms: 3,
 			thr: NewThrottlerChance(1),
 			errs: []error{
-				errors.New("throttler has reached chance threshold"),
-				errors.New("throttler has reached chance threshold"),
-				errors.New("throttler has reached chance threshold"),
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
 			},
 		},
 		"Throttler chance should throttle on >1": {
 			tms: 3,
 			thr: NewThrottlerChance(10.10),
 			errs: []error{
-				errors.New("throttler has reached chance threshold"),
-				errors.New("throttler has reached chance threshold"),
-				errors.New("throttler has reached chance threshold"),
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
+				ErrorThreshold{
+					Throttler: "chance",
+					Threshold: strpercent(1.0),
+				},
 			},
 		},
 		"Throttler chance should not throttle on 0": {
@@ -278,8 +331,14 @@ func TestThrottlers(t *testing.T) {
 			},
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed running threshold"),
-				errors.New("throttler has exceed running threshold"),
+				ErrorThreshold{
+					Throttler: "running",
+					Threshold: strpair{current: 2, threshold: 1},
+				},
+				ErrorThreshold{
+					Throttler: "running",
+					Threshold: strpair{current: 3, threshold: 1},
+				},
 			},
 			over: true,
 		},
@@ -362,8 +421,14 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
 				nil,
 				nil,
 			},
@@ -386,9 +451,15 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
 				nil,
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
 				nil,
 			},
 		},
@@ -402,8 +473,14 @@ func TestThrottlers(t *testing.T) {
 			},
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed latency threshold"),
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "latency",
+					Threshold: strdurations{current: ms5_0, threshold: ms0_9},
+				},
+				ErrorThreshold{
+					Throttler: "latency",
+					Threshold: strdurations{current: ms5_0, threshold: ms0_9},
+				},
 			},
 		},
 		"Throttler latency should not throttle on latency above threshold after retention": {
@@ -421,7 +498,10 @@ func TestThrottlers(t *testing.T) {
 			},
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "latency",
+					Threshold: strdurations{current: ms5_0, threshold: ms0_9},
+				},
 				nil,
 			},
 		},
@@ -437,9 +517,18 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed latency threshold"),
-				errors.New("throttler has exceed latency threshold"),
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
 			},
 		},
 		"Throttler percentile should throttle on latency above threshold after retention": {
@@ -461,8 +550,14 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed latency threshold"),
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
 				nil,
 			},
 		},
@@ -478,21 +573,28 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
 				nil,
-				errors.New("throttler has exceed latency threshold"),
+				ErrorThreshold{
+					Throttler: "percentile",
+					Threshold: strdurations{current: ms5_0, threshold: ms3_0},
+				},
 			},
 		},
 		"Throttler monitor should throttle on internal stats error": {
 			tms: 3,
 			thr: NewThrottlerMonitor(
-				mntmock{err: errors.New("test")},
+				mntmock{err: testerr},
 				Stats{},
 			),
 			errs: []error{
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any stats %w", errors.New("test")),
+				ErrorInternal{Throttler: "monitor", Message: testerr.Error()},
+				ErrorInternal{Throttler: "monitor", Message: testerr.Error()},
+				ErrorInternal{Throttler: "monitor", Message: testerr.Error()},
+				ErrorInternal{Throttler: "monitor", Message: testerr.Error()},
 			},
 		},
 		"Throttler monitor should not throttle on stats below threshold": {
@@ -547,18 +649,67 @@ func TestThrottlers(t *testing.T) {
 				},
 			),
 			errs: []error{
-				errors.New("throttler has exceed stats threshold"),
-				errors.New("throttler has exceed stats threshold"),
-				errors.New("throttler has exceed stats threshold"),
+				ErrorThreshold{
+					Throttler: "monitor",
+					Threshold: strstats{
+						current: Stats{
+							MEMAlloc:  500,
+							MEMSystem: 5000,
+							CPUPause:  500,
+							CPUUsage:  0.1,
+						},
+						threshold: Stats{
+							MEMAlloc:  1000,
+							MEMSystem: 2000,
+							CPUPause:  500,
+							CPUUsage:  0.3,
+						},
+					},
+				},
+				ErrorThreshold{
+					Throttler: "monitor",
+					Threshold: strstats{
+						current: Stats{
+							MEMAlloc:  500,
+							MEMSystem: 5000,
+							CPUPause:  500,
+							CPUUsage:  0.1,
+						},
+						threshold: Stats{
+							MEMAlloc:  1000,
+							MEMSystem: 2000,
+							CPUPause:  500,
+							CPUUsage:  0.3,
+						},
+					},
+				},
+				ErrorThreshold{
+					Throttler: "monitor",
+					Threshold: strstats{
+						current: Stats{
+							MEMAlloc:  500,
+							MEMSystem: 5000,
+							CPUPause:  500,
+							CPUUsage:  0.1,
+						},
+						threshold: Stats{
+							MEMAlloc:  1000,
+							MEMSystem: 2000,
+							CPUPause:  500,
+							CPUUsage:  0.3,
+						},
+					},
+				},
 			},
 		},
 		"Throttler metric should throttle on internal metric error": {
 			tms: 3,
-			thr: NewThrottlerMetric(mtcmock{err: errors.New("test")}),
+			thr: NewThrottlerMetric(mtcmock{err: testerr}),
 			errs: []error{
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't found any metric %w", errors.New("test")),
+				ErrorInternal{Throttler: "metric", Message: testerr.Error()},
+				ErrorInternal{Throttler: "metric", Message: testerr.Error()},
+				ErrorInternal{Throttler: "metric", Message: testerr.Error()},
+				ErrorInternal{Throttler: "metric", Message: testerr.Error()},
 			},
 		},
 		"Throttler metric should not throttle on metric below threshold": {
@@ -569,9 +720,10 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerMetric(mtcmock{metric: true}),
 			errs: []error{
-				errors.New("throttler has reached metric threshold"),
-				errors.New("throttler has reached metric threshold"),
-				errors.New("throttler has reached metric threshold"),
+				ErrorThreshold{Throttler: "metric", Threshold: strbool(true)},
+				ErrorThreshold{Throttler: "metric", Threshold: strbool(true)},
+				ErrorThreshold{Throttler: "metric", Threshold: strbool(true)},
+				ErrorThreshold{Throttler: "metric", Threshold: strbool(true)},
 			},
 		},
 		"Throttler enqueue should throttle on internal nil marshaler error": {
@@ -583,46 +735,46 @@ func TestThrottlers(t *testing.T) {
 				WithMarshaler(context.Background(), nil),
 			},
 			errs: []error{
-				errors.New("throttler hasn't found any marshaler"),
-				errors.New("throttler hasn't found any marshaler"),
-				errors.New("throttler hasn't found any marshaler"),
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required marshaler"},
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required marshaler"},
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required marshaler"},
 			},
 		},
 		"Throttler enqueue should throttle on internal message error": {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			errs: []error{
-				errors.New("throttler hasn't found any message"),
-				errors.New("throttler hasn't found any message"),
-				errors.New("throttler hasn't found any message"),
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required message"},
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required message"},
+				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required message"},
 			},
 		},
 		"Throttler enqueue should throttle on internal marshaler error": {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(errors.New("test"))),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
+				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
 			},
 			errs: []error{
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
 			},
 		},
 		"Throttler enqueue should throttle on internal enqueuer error": {
 			tms: 3,
-			thr: NewThrottlerEnqueue(enqmock{err: errors.New("test")}),
+			thr: NewThrottlerEnqueue(enqmock{err: testerr}),
 			ctxs: []context.Context{
 				WithMessage(context.Background(), "test"),
 				WithMessage(context.Background(), "test"),
 				WithMessage(context.Background(), "test"),
 			},
 			errs: []error{
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
-				fmt.Errorf("throttler hasn't sent any message %w", errors.New("test")),
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
+				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
 			},
 		},
 		"Throttler enqueue should not throttle on enqueuer success": {
@@ -641,12 +793,18 @@ func TestThrottlers(t *testing.T) {
 				ms2_0,
 				ms1_0,
 				2,
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 			),
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 2, threshold: 0},
+				},
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 1, threshold: 0},
+				},
 			},
 		},
 		"Throttler adaptive should not throttle on non throttling adoptee": {
@@ -668,9 +826,9 @@ func TestThrottlers(t *testing.T) {
 				WithKey(context.Background(), "test"),
 			},
 			errs: []error{
-				errors.New("throttler hasn't found any key"),
-				errors.New("throttler hasn't found any key"),
-				errors.New("throttler hasn't found any key"),
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
 			},
 		},
 		"Throttler pattern should throttle on matching throttler pattern": {
@@ -682,7 +840,7 @@ func TestThrottlers(t *testing.T) {
 				},
 				Pattern{
 					Pattern:   regexp.MustCompile("test"),
-					Throttler: NewThrottlerEcho(errors.New("test")),
+					Throttler: NewThrottlerEcho(testerr),
 				},
 			),
 			ctxs: []context.Context{
@@ -693,33 +851,33 @@ func TestThrottlers(t *testing.T) {
 				WithKey(context.Background(), "non"),
 			},
 			errs: []error{
-				errors.New("throttler hasn't found any key"),
-				errors.New("throttler hasn't found any key"),
-				errors.New("test"),
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
+				testerr,
 				nil,
-				errors.New("throttler hasn't found any key"),
+				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
 			},
 		},
 		"Throttler ring should throttle on internal index error": {
 			tms: 3,
 			thr: NewThrottlerRing(),
 			errs: []error{
-				errors.New("throttler hasn't found any index"),
-				errors.New("throttler hasn't found any index"),
-				errors.New("throttler hasn't found any index"),
+				ErrorInternal{Throttler: "ring", Message: "known index is not found"},
+				ErrorInternal{Throttler: "ring", Message: "known index is not found"},
+				ErrorInternal{Throttler: "ring", Message: "known index is not found"},
 			},
 		},
 		"Throttler ring should throttle on matching throttler index": {
 			tms: 5,
 			thr: NewThrottlerRing(
 				NewThrottlerEcho(nil),
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 			),
 			errs: []error{
 				nil,
-				errors.New("test"),
+				testerr,
 				nil,
-				errors.New("test"),
+				testerr,
 				nil,
 			},
 		},
@@ -738,22 +896,22 @@ func TestThrottlers(t *testing.T) {
 		"Throttler all should not throttle on some internal errors": {
 			tms: 3,
 			thr: NewThrottlerAll(
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 				NewThrottlerEcho(nil),
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 			),
 		},
 		"Throttler all should throttle on all internal errors": {
 			tms: 3,
 			thr: NewThrottlerAll(
-				NewThrottlerEcho(errors.New("test")),
-				NewThrottlerEcho(errors.New("test")),
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
+				NewThrottlerEcho(testerr),
+				NewThrottlerEcho(testerr),
 			),
 			errs: []error{
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
+				ErrorInternal{Throttler: "all", Message: testerr.Error()},
+				ErrorInternal{Throttler: "all", Message: testerr.Error()},
+				ErrorInternal{Throttler: "all", Message: testerr.Error()},
 			},
 		},
 		"Throttler any should not throttle on empty list": {
@@ -771,45 +929,54 @@ func TestThrottlers(t *testing.T) {
 		"Throttler any should throttle on some internal errors": {
 			tms: 3,
 			thr: NewThrottlerAny(
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 				NewThrottlerEcho(nil),
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
 			),
 			errs: []error{
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
 			},
 		},
 		"Throttler any should throttle on all internal errors": {
 			tms: 3,
 			thr: NewThrottlerAny(
-				NewThrottlerEcho(errors.New("test")),
-				NewThrottlerEcho(errors.New("test")),
-				NewThrottlerEcho(errors.New("test")),
+				NewThrottlerEcho(testerr),
+				NewThrottlerEcho(testerr),
+				NewThrottlerEcho(testerr),
 			),
 			errs: []error{
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
-				errors.New("throttler has received internal errors"),
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
+				ErrorInternal{Throttler: "any", Message: testerr.Error()},
 			},
 		},
 		"Throttler not should not throttle on internal errors": {
 			tms: 3,
-			thr: NewThrottlerNot(NewThrottlerEcho(errors.New("test"))),
+			thr: NewThrottlerNot(NewThrottlerEcho(testerr)),
 		},
 		"Throttler not should throttle on non internal errors": {
 			tms: 3,
 			thr: NewThrottlerNot(NewThrottlerEcho(nil)),
 			errs: []error{
-				errors.New("throttler hasn't received any internal error"),
-				errors.New("throttler hasn't received any internal error"),
-				errors.New("throttler hasn't received any internal error"),
+				ErrorInternal{
+					Throttler: "not",
+					Message:   "no error happened",
+				},
+				ErrorInternal{
+					Throttler: "not",
+					Message:   "no error happened",
+				},
+				ErrorInternal{
+					Throttler: "not",
+					Message:   "no error happened",
+				},
 			},
 		},
 		"Throttler suppress should not throttle on internal error": {
 			tms: 3,
-			thr: NewThrottlerSuppress(NewThrottlerEcho(errors.New("test"))),
+			thr: NewThrottlerSuppress(NewThrottlerEcho(testerr)),
 		},
 		"Throttler suppress should throttle on non internal error": {
 			tms: 3,
@@ -817,18 +984,21 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler retry should throttle on recurring internal error": {
 			tms: 3,
-			thr: NewThrottlerRetry(NewThrottlerEcho(errors.New("test")), 2),
+			thr: NewThrottlerRetry(NewThrottlerEcho(testerr), 2),
 			errs: []error{
-				errors.New("test"),
-				errors.New("test"),
-				errors.New("test"),
+				testerr,
+				testerr,
+				testerr,
 			},
 		},
 		"Throttler retry should not throttle on retried recurring internal error": {
 			tms: 3,
 			thr: NewThrottlerRetry(NewThrottlerBefore(3), 2),
 			errs: []error{
-				errors.New("throttler has not reached threshold yet"),
+				ErrorThreshold{
+					Throttler: "before",
+					Threshold: strpair{current: 3, threshold: 3},
+				},
 				nil,
 				nil,
 			},
@@ -854,7 +1024,10 @@ func TestThrottlers(t *testing.T) {
 			errs: []error{
 				nil,
 				nil,
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
 			},
 			pass: true,
 		},
@@ -863,8 +1036,14 @@ func TestThrottlers(t *testing.T) {
 			thr: NewThrottlerCache(NewThrottlerAfter(1), ms30_0),
 			errs: []error{
 				nil,
-				errors.New("throttler has exceed threshold"),
-				errors.New("throttler has exceed threshold"),
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 2, threshold: 1},
+				},
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 1},
+				},
 			},
 		},
 	}

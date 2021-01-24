@@ -2,8 +2,6 @@ package gohalt
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"math"
 	"math/rand"
 	"regexp"
@@ -40,6 +38,7 @@ type techo struct {
 
 // NewThrottlerEcho creates new throttler instance that
 // always throttles with the specified error back.
+// - could return any specified error;
 func NewThrottlerEcho(err error) Throttler {
 	return techo{err: err}
 }
@@ -151,6 +150,7 @@ type tcontext struct{}
 
 // NewThrottlerContext creates new throttler instance that
 // always throttless on done context.
+// - could return `ErrorInternal`;
 func NewThrottlerContext() Throttler {
 	return tcontext{}
 }
@@ -158,7 +158,10 @@ func NewThrottlerContext() Throttler {
 func (thr tcontext) Acquire(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("throttler has received context error %w", ctx.Err())
+		return ErrorInternal{
+			Throttler: "context",
+			Message:   ctx.Err().Error(),
+		}
 	default:
 		return nil
 	}
@@ -170,13 +173,13 @@ func (thr tcontext) Release(ctx context.Context) error {
 
 type tpanic struct{}
 
-// NewThrottlerPanic creates new throttler instance that always panics.
+// NewThrottlerPanic creates new throttler instance that always panics with `ErrorInternal`.
 func NewThrottlerPanic() Throttler {
 	return tpanic{}
 }
 
 func (thr tpanic) Acquire(context.Context) error {
-	panic("throttler has reached panic")
+	panic(ErrorInternal{Throttler: "panic"})
 }
 
 func (thr tpanic) Release(context.Context) error {
@@ -190,13 +193,17 @@ type teach struct {
 
 // NewThrottlerEach creates new throttler instance that
 // throttles each periodic i-th call defined by the specified threshold.
+// - could return `ErrorThreshold`;
 func NewThrottlerEach(threshold uint64) Throttler {
 	return &teach{threshold: threshold}
 }
 
 func (thr *teach) Acquire(context.Context) error {
 	if current := atomicIncr(&thr.current); current%thr.threshold == 0 {
-		return errors.New("throttler has reached periodic threshold")
+		return ErrorThreshold{
+			Throttler: "each",
+			Threshold: strpair{current: current, threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -212,13 +219,17 @@ type tbefore struct {
 
 // NewThrottlerBefore creates new throttler instance that
 // throttles each call below the i-th call defined by the specified threshold.
+// - could return `ErrorThreshold`;
 func NewThrottlerBefore(threshold uint64) Throttler {
 	return &tbefore{threshold: threshold}
 }
 
 func (thr *tbefore) Acquire(context.Context) error {
 	if current := atomicBIncr(&thr.current); current <= thr.threshold {
-		return errors.New("throttler has not reached threshold yet")
+		return ErrorThreshold{
+			Throttler: "before",
+			Threshold: strpair{current: current, threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -234,13 +245,17 @@ type tafter struct {
 
 // NewThrottlerAfter creates new throttler instance that
 // throttles each call after the i-th call defined by the specified threshold.
+// - could return `ErrorThreshold`;
 func NewThrottlerAfter(threshold uint64) Throttler {
 	return &tafter{threshold: threshold}
 }
 
 func (thr *tafter) Acquire(context.Context) error {
 	if current := atomicBIncr(&thr.current); current > thr.threshold {
-		return errors.New("throttler has exceed threshold")
+		return ErrorThreshold{
+			Throttler: "after",
+			Threshold: strpair{current: current, threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -257,6 +272,7 @@ type tchance struct {
 // throttles each call with the chance p defined by the specified threshold.
 // Chance value is normalized to [0.0, 1.0] range.
 // Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.
+// - could return `ErrorThreshold`;
 func NewThrottlerChance(threshold float64) Throttler {
 	threshold = math.Abs(threshold)
 	if threshold > 1.0 {
@@ -267,7 +283,10 @@ func NewThrottlerChance(threshold float64) Throttler {
 
 func (thr tchance) Acquire(context.Context) error {
 	if thr.threshold > 1.0-rand.Float64() {
-		return errors.New("throttler has reached chance threshold")
+		return ErrorThreshold{
+			Throttler: "chance",
+			Threshold: strpercent(thr.threshold),
+		}
 	}
 	return nil
 }
@@ -284,13 +303,17 @@ type trunning struct {
 // NewThrottlerRunning creates new throttler instance that
 // throttles each call which exeeds the running quota acquired - release
 // q defined by the specified threshold.
+// - could return `ErrorThreshold`;
 func NewThrottlerRunning(threshold uint64) Throttler {
 	return &trunning{threshold: threshold}
 }
 
 func (thr *trunning) Acquire(context.Context) error {
 	if running := atomicBIncr(&thr.running); running > thr.threshold {
-		return errors.New("throttler has exceed running threshold")
+		return ErrorThreshold{
+			Throttler: "running",
+			Threshold: strpair{current: running, threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -380,6 +403,7 @@ type ttimed struct {
 // q defined by the specified threshold in the specified interval.
 // Periodically each specified interval the running quota number is reseted.
 // If quantum is set then quantum will be used instead of interval to provide the running quota delta updates.
+// - could return `ErrorThreshold`;
 func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) Throttler {
 	tafter := NewThrottlerAfter(threshold).(*tafter)
 	delta, window := threshold, interval
@@ -422,6 +446,7 @@ type tlatency struct {
 // throttles each call after the call latency l defined by the specified threshold was exeeded once.
 // If retention is set then throttler state will be reseted after retention duration.
 // Use `WithTimestamp` to specify running duration between throttler acquire and release.
+// - could return `ErrorThreshold`;
 func NewThrottlerLatency(threshold time.Duration, retention time.Duration) Throttler {
 	thr := &tlatency{threshold: threshold}
 	thr.reset = delayed(retention, func(context.Context) error {
@@ -433,7 +458,10 @@ func NewThrottlerLatency(threshold time.Duration, retention time.Duration) Throt
 
 func (thr *tlatency) Acquire(context.Context) error {
 	if latency := atomicGet(&thr.latency); latency > uint64(thr.threshold) {
-		return errors.New("throttler has exceed latency threshold")
+		return ErrorThreshold{
+			Throttler: "latency",
+			Threshold: strdurations{current: time.Duration(latency), threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -462,6 +490,7 @@ type tpercentile struct {
 // Percentile values are kept in bounded buffer with capacity c defined by the specified capacity.
 // If retention is set then throttler state will be reseted after retention duration.
 // Use `WithTimestamp` to specify running duration between throttler acquire and release.
+// - could return `ErrorThreshold`;
 func NewThrottlerPercentile(
 	threshold time.Duration,
 	capacity uint8,
@@ -488,7 +517,10 @@ func (thr tpercentile) Acquire(ctx context.Context) error {
 	if thr.latencies.Len() > 0 {
 		if latency := thr.latencies.At(thr.percentile); latency >= uint64(thr.threshold) {
 			gorun(ctx, thr.reset)
-			return errors.New("throttler has exceed latency threshold")
+			return ErrorThreshold{
+				Throttler: "percentile",
+				Threshold: strdurations{current: time.Duration(latency), threshold: thr.threshold},
+			}
 		}
 	}
 	return nil
@@ -512,6 +544,8 @@ type tmonitor struct {
 // any of the stats defined by the specified threshold or if any internal error occurred.
 // Builtin `Monitor` implementations come with stats caching by default.
 // Use builtin `NewMonitorSystem` to create go system monitor instance.
+// - could return `ErrorInternal`;
+// - could return `ErrorThreshold`;
 func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler {
 	return tmonitor{mnt: mnt, threshold: threshold}
 }
@@ -519,13 +553,16 @@ func NewThrottlerMonitor(mnt Monitor, threshold Stats) Throttler {
 func (thr tmonitor) Acquire(ctx context.Context) error {
 	stats, err := thr.mnt.Stats(ctx)
 	if err != nil {
-		return fmt.Errorf("throttler hasn't found any stats %w", err)
+		return ErrorInternal{
+			Throttler: "monitor",
+			Message:   err.Error(),
+		}
 	}
-	if (thr.threshold.MEMAlloc > 0 && stats.MEMAlloc >= thr.threshold.MEMAlloc) ||
-		(thr.threshold.MEMSystem > 0 && stats.MEMSystem >= thr.threshold.MEMSystem) ||
-		(thr.threshold.CPUPause > 0 && stats.CPUPause >= thr.threshold.CPUPause) ||
-		(thr.threshold.CPUUsage > 0 && stats.CPUUsage >= thr.threshold.CPUUsage) {
-		return errors.New("throttler has exceed stats threshold")
+	if thr.threshold.Compare(stats) {
+		return ErrorThreshold{
+			Throttler: "monitor",
+			Threshold: strstats{current: stats, threshold: thr.threshold},
+		}
 	}
 	return nil
 }
@@ -543,6 +580,8 @@ type tmetric struct {
 // boolean metric is reached or if any internal error occurred.
 // Builtin `Metric` implementations come with boolean metric caching by default.
 // Use builtin `NewMetricPrometheus` to create Prometheus metric instance.
+// - could return `ErrorInternal`;
+// - could return `ErrorThreshold`;
 func NewThrottlerMetric(mtc Metric) Throttler {
 	return tmetric{mtc: mtc}
 }
@@ -550,10 +589,16 @@ func NewThrottlerMetric(mtc Metric) Throttler {
 func (thr tmetric) Acquire(ctx context.Context) error {
 	val, err := thr.mtc.Query(ctx)
 	if err != nil {
-		return fmt.Errorf("throttler hasn't found any metric %w", err)
+		return ErrorInternal{
+			Throttler: "metric",
+			Message:   err.Error(),
+		}
 	}
 	if val {
-		return errors.New("throttler has reached metric threshold")
+		return ErrorThreshold{
+			Throttler: "metric",
+			Threshold: strbool(val),
+		}
 	}
 	return nil
 }
@@ -573,6 +618,7 @@ type tenqueue struct {
 // Builtin `Enqueuer` implementations come with connection reuse and retries by default.
 // Use builtin `NewEnqueuerRabbit` to create RabbitMQ enqueuer instance
 // or `NewEnqueuerKafka` to create Kafka enqueuer instance.
+// - could return `ErrorInternal`;
 func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 	return tenqueue{enq: enq}
 }
@@ -580,18 +626,30 @@ func NewThrottlerEnqueue(enq Enqueuer) Throttler {
 func (thr tenqueue) Acquire(ctx context.Context) error {
 	marshaler := ctxMarshaler(ctx)
 	if marshaler == nil {
-		return errors.New("throttler hasn't found any marshaler")
+		return ErrorInternal{
+			Throttler: "enqueue",
+			Message:   "context doesn't contain required marshaler",
+		}
 	}
 	message := ctxMessage(ctx)
 	if message == nil {
-		return errors.New("throttler hasn't found any message")
+		return ErrorInternal{
+			Throttler: "enqueue",
+			Message:   "context doesn't contain required message",
+		}
 	}
 	msg, err := marshaler(message)
 	if err != nil {
-		return fmt.Errorf("throttler hasn't sent any message %w", err)
+		return ErrorInternal{
+			Throttler: "enqueue",
+			Message:   err.Error(),
+		}
 	}
 	if err := thr.enq.Enqueue(ctx, msg); err != nil {
-		return fmt.Errorf("throttler hasn't sent any message %w", err)
+		return ErrorInternal{
+			Throttler: "enqueue",
+			Message:   err.Error(),
+		}
 	}
 	return nil
 }
@@ -615,6 +673,7 @@ type tadaptive struct {
 // Provided adapted throttler adjusts the running quota of adapter throttler by changing the value by d
 // defined by the specified step, it subtracts *d^2* from the running quota
 // if adapted throttler throttles or adds *d* to the running quota if it doesn't.
+// - could return `ErrorThreshold`;
 func NewThrottlerAdaptive(
 	threshold uint64,
 	interval time.Duration,
@@ -654,6 +713,8 @@ type tpattern []Pattern
 // throttles if matching throttler from provided patterns throttles.
 // Use `WithKey` to specify key for regexp pattern throttler matching.
 // See `Pattern` which defines a pair of regexp and related throttler.
+// - could return `ErrorInternal`;
+// - could return any underlying throttler error;
 func NewThrottlerPattern(patterns ...Pattern) Throttler {
 	return tpattern(patterns)
 }
@@ -664,7 +725,10 @@ func (thr tpattern) Acquire(ctx context.Context) error {
 			return pattern.Throttler.Acquire(ctx)
 		}
 	}
-	return errors.New("throttler hasn't found any key")
+	return ErrorInternal{
+		Throttler: "pattern",
+		Message:   "known key is not found",
+	}
 }
 
 func (thr tpattern) Release(ctx context.Context) error {
@@ -685,6 +749,8 @@ type tring struct {
 
 // NewThrottlerRing creates new throttler instance that
 // throttles if the i-th call throttler from provided list throttle.
+// - could return `ErrorInternal`;
+// - could return any underlying throttler error;
 func NewThrottlerRing(thrs ...Throttler) Throttler {
 	return &tring{thrs: thrs}
 }
@@ -695,7 +761,10 @@ func (thr *tring) Acquire(ctx context.Context) error {
 		index := int(acquire) % length
 		return thr.thrs[index].Acquire(ctx)
 	}
-	return errors.New("throttler hasn't found any index")
+	return ErrorInternal{
+		Throttler: "ring",
+		Message:   "known index is not found",
+	}
 }
 
 func (thr *tring) Release(ctx context.Context) error {
@@ -711,18 +780,23 @@ type tall []Throttler
 
 // NewThrottlerAll creates new throttler instance that
 // throttles call if all provided throttlers throttle.
+// - could return `ErrorInternal`;
 func NewThrottlerAll(thrs ...Throttler) Throttler {
 	return tall(thrs)
 }
 
 func (thrs tall) Acquire(ctx context.Context) error {
 	if length := len(thrs); length > 0 {
+		var err error
 		for _, thr := range thrs {
-			if err := thr.Acquire(ctx); err == nil {
+			if err = thr.Acquire(ctx); err == nil {
 				return nil
 			}
 		}
-		return errors.New("throttler has received internal errors")
+		return ErrorInternal{
+			Throttler: "all",
+			Message:   err.Error(),
+		}
 	}
 	return nil
 }
@@ -740,6 +814,7 @@ type tany []Throttler
 
 // NewThrottlerAny creates new throttler instance that
 // throttles call if any of provided throttlers throttle.
+// - could return `ErrorInternal`;
 func NewThrottlerAny(thrs ...Throttler) Throttler {
 	return tany(thrs)
 }
@@ -750,7 +825,10 @@ func (thrs tany) Acquire(ctx context.Context) error {
 		thr := thr
 		runs = append(runs, func(ctx context.Context) error {
 			if err := thr.Acquire(ctx); err != nil {
-				return errors.New("throttler has received internal errors")
+				return ErrorInternal{
+					Throttler: "any",
+					Message:   err.Error(),
+				}
 			}
 			return nil
 		})
@@ -776,6 +854,7 @@ type tnot struct {
 
 // NewThrottlerNot creates new throttler instance that
 // throttles call if provided throttler doesn't throttle.
+// - could return `ErrorInternal`;
 func NewThrottlerNot(thr Throttler) Throttler {
 	return tnot{thr: thr}
 }
@@ -784,7 +863,10 @@ func (thr tnot) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
 		return nil
 	}
-	return errors.New("throttler hasn't received any internal error")
+	return ErrorInternal{
+		Throttler: "not",
+		Message:   "no error happened",
+	}
 }
 
 func (thr tnot) Release(ctx context.Context) error {
@@ -804,7 +886,7 @@ func NewThrottlerSuppress(thr Throttler) Throttler {
 
 func (thr tsuppress) Acquire(ctx context.Context) error {
 	if err := thr.thr.Acquire(ctx); err != nil {
-		log("throttler error is suppressed %v", err)
+		log("throttler error is suppressed: %v", err)
 	}
 	return nil
 }
@@ -822,6 +904,7 @@ type tretry struct {
 // NewThrottlerRetry creates new throttler instance that
 // retries provided throttler error up until the provided retries threshold.
 // Internally retry uses square throttler with `DefaultRetriedDuration` initial duration.
+// - could return any underlying throttler error;
 func NewThrottlerRetry(thr Throttler, retries uint64) Throttler {
 	return tretry{thr: thr, retries: retries}
 }
@@ -847,6 +930,7 @@ type tcache struct {
 // caches provided throttler calls for the provided cache duration,
 // throttler release resulting resets cache.
 // Only non throttling calls are cached for the provided cache duration.
+// - could return any underlying throttler error;
 func NewThrottlerCache(thr Throttler, cache time.Duration) Throttler {
 	tcache := tcache{thr: thr}
 	tcache.acquire, tcache.reset = cached(cache, func(ctx context.Context) error {
