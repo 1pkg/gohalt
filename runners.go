@@ -2,7 +2,6 @@ package gohalt
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -46,27 +45,27 @@ func NewRunnerSync(ctx context.Context, thr Throttler) Runner {
 func (r *rsync) Run(run Runnable) {
 	select {
 	case <-r.ctx.Done():
-		r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+		r.report(r.ctx.Err())
 		return
 	default:
 	}
 	defer func() {
 		if err := r.thr.Release(r.ctx); err != nil {
-			r.report(fmt.Errorf("throttler error has happened %w", err))
+			r.report(err)
 		}
 	}()
 	if err := r.thr.Acquire(r.ctx); err != nil {
-		r.report(fmt.Errorf("throttler error has happened %w", err))
+		r.report(err)
 		return
 	}
 	select {
 	case <-r.ctx.Done():
-		r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+		r.report(r.ctx.Err())
 		return
 	default:
 	}
 	if err := run(r.ctx); err != nil {
-		r.report(fmt.Errorf("runnable error has happened %w", err))
+		r.report(err)
 		return
 	}
 }
@@ -109,27 +108,27 @@ func (r *rasync) Run(run Runnable) {
 		defer r.wg.Done()
 		select {
 		case <-r.ctx.Done():
-			r.report(fmt.Errorf("context error happened %w", r.ctx.Err()))
+			r.report(r.ctx.Err())
 			return
 		default:
 		}
 		defer func() {
 			if err := r.thr.Release(r.ctx); err != nil {
-				r.report(fmt.Errorf("throttler error has happened %w", err))
+				r.report(err)
 			}
 		}()
 		if err := r.thr.Acquire(r.ctx); err != nil {
-			r.report(fmt.Errorf("throttler error has happened %w", err))
+			r.report(err)
 			return
 		}
 		select {
 		case <-r.ctx.Done():
-			r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+			r.report(r.ctx.Err())
 			return
 		default:
 		}
 		if err := run(r.ctx); err != nil {
-			r.report(fmt.Errorf("runnable error has happened %w", err))
+			r.report(err)
 			return
 		}
 	}()

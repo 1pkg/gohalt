@@ -3,7 +3,6 @@ package gohalt
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -28,18 +27,15 @@ func TestContext(t *testing.T) {
 	}{
 		"Context with throttler should be done on throttling": {
 			ctx: WithThrottler(context.Background(), tmock{aerr: testerr}, ms1_0),
-			err: fmt.Errorf("throttler error has happened %w", testerr),
+			err: testerr,
 		},
 		"Context with throttler should be done on throttling after": {
 			ctx: WithThrottler(context.Background(), NewThrottlerAfter(1), ms1_0),
-			err: fmt.Errorf(
-				"throttler error has happened %w",
-				ErrorThreshold{Throttler: "after", Threshold: strpair{current: 3, threshold: 1}},
-			),
+			err: ErrorThreshold{Throttler: "after", Threshold: strpair{current: 3, threshold: 1}},
 		},
 		"Context with throttler should be done with canceled context": {
 			ctx: WithThrottler(cctx, tmock{}, ms1_0),
-			err: fmt.Errorf("context error has happened %w", cctx.Err()),
+			err: cctx.Err(),
 		},
 		"Context with throttler should not be done after timeout": {
 			ctx: WithThrottler(ctx, tmock{}, ms1_0),

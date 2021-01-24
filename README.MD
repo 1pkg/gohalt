@@ -130,6 +130,12 @@ thr := NewThrottlerAll( // throttles only if all children throttle
 )
 ```
 
+In gohalt v0.4.0 breaking change is introduced to replace all untyped errors with two major error types:
+- `ErrorThreshold` which defines error type that occurs if throttler reaches specified threshold.
+- `ErrorInternal` which defines error type that occurs if throttler internal error happens.
+You can find list of returning error types for all existing throttlers in throttlers table bellow or in documentation.
+**Note:** not every gohalt throttler must return error; some throttlers might cause different side effects like logging or call to `time.Sleep` instead.
+
 ## Throttlers
 
 | Throttler | Definition | Description |
