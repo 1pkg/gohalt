@@ -299,6 +299,52 @@ func TestThrottlers(t *testing.T) {
 				},
 			},
 		},
+		"Throttler past should throttle before time threshold": {
+			tms: 3,
+			thr: NewThrottlerPast(time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local)),
+			ctxs: []context.Context{
+				WithTimestamp(context.Background(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
+				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
+				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
+			},
+			errs: []error{
+				ErrorThreshold{
+					Throttler: "past",
+					Threshold: strtimes{
+						current:   time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC),
+						threshold: time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local).UTC(),
+					},
+				},
+				ErrorThreshold{
+					Throttler: "past",
+					Threshold: strtimes{
+						current:   time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local).UTC(),
+						threshold: time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local).UTC(),
+					},
+				},
+				nil,
+			},
+		},
+		"Throttler future should throttle before time threshold": {
+			tms: 3,
+			thr: NewThrottlerFuture(time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local)),
+			ctxs: []context.Context{
+				WithTimestamp(context.Background(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
+				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
+				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "future",
+					Threshold: strtimes{
+						current:   time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local).UTC(),
+						threshold: time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local).UTC(),
+					},
+				},
+			},
+		},
 		"Throttler chance should throttle on 1": {
 			tms: 3,
 			thr: NewThrottlerChance(1),
