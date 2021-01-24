@@ -37,7 +37,7 @@ func NewRunnerSync(ctx context.Context, thr Throttler) Runner {
 				r.err = err
 				cancel()
 			}
-			log("sync runner error happened %v", err)
+			log("sync runner error happened: %v", err)
 		}
 	}
 	return &r
@@ -97,7 +97,7 @@ func NewRunnerAsync(ctx context.Context, thr Throttler) Runner {
 				r.err = err
 				cancel()
 			})
-			log("async runner error happened %v", err)
+			log("async runner error happened: %v", err)
 		}
 	}
 	return &r
@@ -109,7 +109,7 @@ func (r *rasync) Run(run Runnable) {
 		defer r.wg.Done()
 		select {
 		case <-r.ctx.Done():
-			r.report(fmt.Errorf("context error has happened %w", r.ctx.Err()))
+			r.report(fmt.Errorf("context error happened %w", r.ctx.Err()))
 			return
 		default:
 		}

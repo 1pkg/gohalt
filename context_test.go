@@ -13,6 +13,7 @@ import (
 func TestContext(t *testing.T) {
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	testerr := errors.New("test")
 	ctx := WithParams(
 		context.Background(),
 		time.Now(),
@@ -26,12 +27,15 @@ func TestContext(t *testing.T) {
 		err error
 	}{
 		"Context with throttler should be done on throttling": {
-			ctx: WithThrottler(context.Background(), tmock{aerr: errors.New("test")}, ms1_0),
-			err: fmt.Errorf("throttler error has happened %w", errors.New("test")),
+			ctx: WithThrottler(context.Background(), tmock{aerr: testerr}, ms1_0),
+			err: fmt.Errorf("throttler error has happened %w", testerr),
 		},
 		"Context with throttler should be done on throttling after": {
 			ctx: WithThrottler(context.Background(), NewThrottlerAfter(1), ms1_0),
-			err: fmt.Errorf("throttler error has happened %w", errors.New("throttler has exceed threshold")),
+			err: fmt.Errorf(
+				"throttler error has happened %w",
+				ErrorThreshold{Throttler: "after", Threshold: strpair{current: 3, threshold: 1}},
+			),
 		},
 		"Context with throttler should be done with canceled context": {
 			ctx: WithThrottler(cctx, tmock{}, ms1_0),

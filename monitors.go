@@ -21,6 +21,14 @@ type Stats struct {
 	CPUUsage  float64
 }
 
+// Compare checks if provided stats is below current stats.
+func (s Stats) Compare(stats Stats) bool {
+	return (s.MEMAlloc > 0 && stats.MEMAlloc >= s.MEMAlloc) ||
+		(s.MEMSystem > 0 && stats.MEMSystem >= s.MEMSystem) ||
+		(s.CPUPause > 0 && stats.CPUPause >= s.CPUPause) ||
+		(s.CPUUsage > 0 && stats.CPUUsage >= s.CPUUsage)
+}
+
 // Monitor defines system monitor interface that returns the system stats.
 type Monitor interface {
 	// Stats returns system stats or internal error if any happened.

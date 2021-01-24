@@ -77,7 +77,7 @@ func (mtc *mtcprometheus) pull(ctx context.Context, api prometheus.API, query st
 		return err
 	}
 	for _, warn := range warns {
-		log("prometheus warning happened %s", warn)
+		log("prometheus warning happened: %s", warn)
 	}
 	vec, ok := val.(model.Vector)
 	if !ok || vec.Len() != 1 {
