@@ -68,7 +68,7 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 		ts = time.Now()
 		// force strict acquire order
 		for index != int(atomicGet(&t.idx)) {
-			sleep(ctx, time.Microsecond)
+			_ = sleep(ctx, time.Microsecond)
 		}
 		// set additional timestamp only if present
 		if index < len(t.tss) {
