@@ -44,7 +44,7 @@ type Throttler interface {
 ```
 `Throttler` interface exposes pair of counterpart methods: `Acquire` takes a part of *throttling quota* or returns error if *throttling quota* is drained and needs to be called right before shared resource acquire; `Release` puts a part of *throttling quota* back or returns error if this is not possible and needs to be called just after shared resource release; **Note:** all derived throttler implementations are thread safe, so they could be used concurrently without additional locking. **Note:** all acquired throttlers should be released exatly the same amount of times they have been acquired. **Note:** despite throttler `Release` method has the same signature as `Acquire` has, `Release` implementations should try to handle any internal error gracefully and return error back rarely, nevertheless all errors returned by `Release` should be handeled by client.
 
-In Gohalt throtllers could be easily combined with each other to build complex pipelines. There are multiple composite throttlers (all, any, ring, pattern, not, etc) as well as leaf throttlers (timed, latency, monitor, metric, percentile, etc) to work with in Gohalt. If you don't find in [existing throttlers](#Throttlers) the one that fits your needs you can create custom throttler by implementing `Throttler` interface. Such custom throttler should work with existing Gohalt throttlers and tools out of box.
+In Gohalt throtllers could be easily combined with each other to build complex pipelines. There are multiple composite throttlers (all, any, ring, pattern, not, generator, etc) as well as leaf throttlers (timed, latency, monitor, metric, percentile, etc) to work with in Gohalt. If you don't find in [existing throttlers](#Throttlers) the one that fits your needs you can create custom throttler by implementing `Throttler` interface. Such custom throttler should work with existing Gohalt throttlers and tools out of box.
 
 Gohalt includes multiple supporting surrounding tools to make throttling more sugary.
 ```go
@@ -80,7 +80,7 @@ func WithTimestamp(ctx context.Context, ts time.Time) context.Context
 func WithPriority(ctx context.Context, priority uint8) context.Context
 // WithKey adds the provided key to the provided context
 // to add additional call identifier to context.
-// Resulted context is used by: `pattern` throtttler.
+// Resulted context is used by: `pattern` and `generator` throtttlers.
 func WithKey(ctx context.Context, key string) context.Context
 // WithMessage adds the provided message to the provided context
 // to add additional message that need to be used to context.
@@ -170,6 +170,7 @@ You can find list of returning error types for all existing throttlers in thrott
 | suppress | `func NewThrottlerSuppress(thr Throttler) Throttler` | Suppresses provided throttler to never throttle. |
 | retry | `func NewThrottlerRetry(thr Throttler, retries uint64) Throttler` | Retries provided throttler error up until the provided retries threshold.<br> If provided onthreshold flag is set even `ErrorThreshold` errors will be retried.<br> Internally retry uses square throttler with `DefaultRetriedDuration` initial duration.<br> - could return any underlying throttler error; |
 | cache | `func NewThrottlerCache(thr Throttler, cache time.Duration) Throttler` | Caches provided throttler calls for the provided cache duration, throttler release resulting resets cache.<br> Only non throttling calls are cached for the provided cache duration.<br> - could return any underlying throttler error; |
+| generator | `func NewThrottlerGenerator(gen Generator, capacity uint64, eviction float64) Throttler` | Creates new throttler instance that throttles if found key matching throttler throttles.<br> If no key matching throttler has been found generator used insted to provide new throttler that will be added to existing throttlers map.<br> Generated throttlers are kept in bounded map with capacity *c* defined by the specified capacity and eviction rate *e* defined bu specified eviction, where eviction rate affects number of throttlers that will be removed from the map after bounds overflow.<br> Use `WithKey` to specify key for throttler matching and generation.<br> - could return `ErrorInternal`;<br> - could return any underlying throttler error; |
 
 ## Integrations
 

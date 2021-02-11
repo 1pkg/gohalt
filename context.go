@@ -49,7 +49,7 @@ func ctxPriority(ctx context.Context, limit uint8) uint8 {
 
 // WithKey adds the provided key to the provided context
 // to add additional call identifier to context.
-// Resulted context is used by: `pattern` throtttler.
+// Resulted context is used by: `pattern` and `generator` throtttlers.
 func WithKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, ghctxkey, key)
 }
