@@ -3,7 +3,6 @@ package gohalt
 import (
 	"context"
 	"math"
-	"math/rand"
 	"regexp"
 	"sync"
 	"time"
@@ -115,7 +114,7 @@ type tjitter struct {
 // adds the provided jitter delta distribution on top.
 // Jitter value is normalized to [0.0, 1.0] range and defines
 // which part of square delay could be randomized in percents.
-// Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.
+// Implementation uses secure `crypto/rand` as PRNG function.
 func NewThrottlerJitter(initial time.Duration, limit time.Duration, reset bool, jitter float64) Throttler {
 	jitter = math.Abs(jitter)
 	if jitter > 1.0 {
@@ -136,7 +135,7 @@ func (thr *tjitter) Acquire(ctx context.Context) error {
 		}
 	}
 	base := float64(duration) * thr.jitter
-	side := (float64(duration) - base) * rand.Float64()
+	side := (float64(duration) - base) * rndf64(1.0)
 	return sleep(ctx, time.Duration(base+side))
 }
 
@@ -320,7 +319,7 @@ type tchance struct {
 // NewThrottlerChance creates new throttler instance that
 // throttles each call with the chance p defined by the specified threshold.
 // Chance value is normalized to [0.0, 1.0] range.
-// Implementation uses `math/rand` as PRNG function and expects rand seeding by a client.
+// Implementation uses secure `crypto/rand` as PRNG function.
 // - could return `ErrorThreshold`;
 func NewThrottlerChance(threshold float64) Throttler {
 	threshold = math.Abs(threshold)
@@ -331,7 +330,7 @@ func NewThrottlerChance(threshold float64) Throttler {
 }
 
 func (thr tchance) Acquire(context.Context) error {
-	if thr.threshold > 1.0-rand.Float64() {
+	if thr.threshold > 1.0-rndf64(0.0) {
 		return ErrorThreshold{
 			Throttler: "chance",
 			Threshold: strpercent(thr.threshold),
@@ -1023,7 +1022,7 @@ type tgenerator struct {
 // If no key matching throttler has been found generator see `Generator` used insted
 // to provide new throttler that will be added to existing throttlers map.
 // Generated throttlers are kept in bounded map with capacity c defined by the specified capacity
-// and eviction rate e defined bu specified eviction, where eviction rate affects number of
+// and eviction rate e defined by specified eviction value is normalized to [0.0, 1.0], where eviction rate affects number of
 // throttlers that will be removed from the map after bounds overflow.
 // Use `WithKey` to specify key for throttler matching and generation.
 // - could return `ErrorInternal`;
