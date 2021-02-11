@@ -1128,6 +1128,99 @@ func TestThrottlers(t *testing.T) {
 				},
 			},
 		},
+		"Throttler generator should throttle on generator error": {
+			tms: 3,
+			thr: NewThrottlerGenerator(
+				func(string) (Throttler, error) {
+					return NewThrottlerEcho(nil), testerr
+				},
+				10,
+				0.1,
+			),
+			ctxs: []context.Context{
+				WithKey(context.Background(), "test"),
+				WithKey(context.Background(), "nontest"),
+				WithKey(context.Background(), "111"),
+			},
+			errs: []error{
+				ErrorInternal{
+					Throttler: "generator",
+					Message:   testerr.Error(),
+				},
+				ErrorInternal{
+					Throttler: "generator",
+					Message:   testerr.Error(),
+				},
+				ErrorInternal{
+					Throttler: "generator",
+					Message:   testerr.Error(),
+				},
+			},
+		},
+		"Throttler generator should throttle on matching throttler key": {
+			tms: 5,
+			thr: NewThrottlerGenerator(
+				func(string) (Throttler, error) {
+					return NewThrottlerAfter(1), nil
+				},
+				10,
+				0.1,
+			),
+			ctxs: []context.Context{
+				WithKey(context.Background(), "125"),
+				WithKey(context.Background(), "125"),
+				WithKey(context.Background(), "test"),
+				WithKey(context.Background(), "nontest"),
+				WithKey(context.Background(), "125"),
+			},
+			errs: []error{
+				nil,
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 2, threshold: 1},
+				},
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 3, threshold: 1},
+				},
+			},
+		},
+		"Throttler generator should evict throttlers on bounds overflow pattern": {
+			tms: 7,
+			thr: NewThrottlerGenerator(
+				func(string) (Throttler, error) {
+					return NewThrottlerAfter(1), nil
+				},
+				2,
+				1000,
+			),
+			ctxs: []context.Context{
+				WithKey(context.Background(), "111"),
+				WithKey(context.Background(), "test"),
+				WithKey(context.Background(), "111"),
+				WithKey(context.Background(), "test1"),
+				WithKey(context.Background(), "kkk"),
+				WithKey(context.Background(), "kkk"),
+				WithKey(context.Background(), "test2"),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 2, threshold: 1},
+				},
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "after",
+					Threshold: strpair{current: 2, threshold: 1},
+				},
+				nil,
+			},
+		},
 	}
 	for tname, ptrtcase := range table {
 		t.Run(tname, func(t *testing.T) {
