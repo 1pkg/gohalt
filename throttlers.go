@@ -1009,3 +1009,68 @@ func (thr tcache) Release(ctx context.Context) error {
 	_ = thr.reset(ctx)
 	return nil
 }
+
+type tgenerator struct {
+	gen      Generator
+	thrs     sync.Map
+	size     uint64
+	capacity uint64
+	evict    Runnable
+}
+
+// NewThrottlerGenerator creates new throttler instance that
+// throttles if found key matching throttler throttles.
+// If no key matching throttler has been found generator see `Generator` used insted
+// to provide new throttler that will be added to existing throttlers map.
+// Generated throttlers are kept in bounded map with capacity c defined by the specified capacity
+// and eviction rate e defined bu specified eviction, where eviction rate affects number of
+// throttlers that will be removed from the map after bounds overflow.
+// Use `WithKey` to specify key for throttler matching and generation.
+// - could return `ErrorInternal`;
+// - could return any underlying throttler error;
+func NewThrottlerGenerator(gen Generator, capacity uint64, eviction float64) Throttler {
+	thr := &tgenerator{gen: gen, capacity: capacity}
+	eviction = math.Abs(eviction)
+	if eviction > 1.0 {
+		eviction = 1.0
+	}
+	num := uint64(math.Ceil(float64(capacity) * eviction))
+	thr.evict = locked(func(c context.Context) error {
+		var i uint64
+		thr.thrs.Range(func(key interface{}, _ interface{}) bool {
+			thr.thrs.Delete(key)
+			atomicBDecr(&thr.size)
+			i++
+			return i < num
+		})
+		return nil
+	})
+	return thr
+}
+
+func (thr *tgenerator) Acquire(ctx context.Context) error {
+	key := ctxKey(ctx)
+	if thr, ok := thr.thrs.Load(key); ok {
+		return thr.(Throttler).Acquire(ctx)
+	}
+	gthr, err := thr.gen(key)
+	if err != nil {
+		return ErrorInternal{
+			Throttler: "generator",
+			Message:   err.Error(),
+		}
+	}
+	if size := atomicGet(&thr.size) + 1; size > thr.capacity {
+		gorun(ctx, thr.evict)
+	}
+	thr.thrs.Store(key, gthr)
+	atomicBIncr(&thr.size)
+	return gthr.Acquire(ctx)
+}
+
+func (thr *tgenerator) Release(ctx context.Context) error {
+	if thr, ok := thr.thrs.Load(ctxKey(ctx)); ok {
+		return thr.(Throttler).Release(ctx)
+	}
+	return nil
+}
