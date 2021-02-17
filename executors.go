@@ -114,6 +114,13 @@ func once(run Runnable) Runnable {
 	}
 }
 
+func async(run Runnable) Runnable {
+	return func(ctx context.Context) (err error) {
+		gorun(ctx, run)
+		return nil
+	}
+}
+
 func all(runs ...Runnable) Runnable {
 	return func(ctx context.Context) error {
 		var once sync.Once

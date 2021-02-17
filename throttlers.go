@@ -461,17 +461,19 @@ func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Du
 	}
 	thr := ttimed{tafter: tafter}
 	thr.loop = once(
-		loop(window, func(ctx context.Context) error {
-			atomicBSub(&thr.current, delta)
-			return ctx.Err()
-		}),
+		async(
+			loop(window, func(ctx context.Context) error {
+				atomicBSub(&thr.current, delta)
+				return ctx.Err()
+			}),
+		),
 	)
 	return thr
 }
 
 func (thr ttimed) Acquire(ctx context.Context) error {
 	// start loop on first acquire
-	gorun(ctx, thr.loop)
+	_ = thr.loop(ctx)
 	err := thr.tafter.Acquire(ctx)
 	if current := atomicGet(&thr.current); current > thr.threshold {
 		atomicSet(&thr.current, thr.threshold)
