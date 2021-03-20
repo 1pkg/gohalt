@@ -1,6 +1,6 @@
 module github.com/1pkg/gohalt
 
-go 1.15
+go 1.16
 
 require (
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
