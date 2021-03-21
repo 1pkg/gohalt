@@ -33,7 +33,6 @@ type tcase struct {
 	tms  uint64            // number of sub runs inside one case
 	thr  Throttler         // throttler itself
 	acts []Runnable        // actions that need to be throttled
-	ins  []Runnable        // actions that need to be run inside throttle
 	pres []Runnable        // actions that neeed to be run before throttle
 	tss  []time.Duration   // timestamps that needs to be applied to contexts set
 	ctxs []context.Context // contexts set for throttling
@@ -42,6 +41,7 @@ type tcase struct {
 	idx  uint64            // carries seq number of sub run execution
 	over bool              // if throttler needs to be over released
 	pass bool              // if throttler doesn't need to be released
+	wait time.Duration     // if next throttler run needs to be delayed in acq
 }
 
 func (t *tcase) run(index int) (dur time.Duration, err error) {
@@ -85,11 +85,9 @@ func (t *tcase) run(index int) (dur time.Duration, err error) {
 				err = terr
 			}
 		}
-		// run additional in action only if present
-		if index < len(t.ins) {
-			if in := t.ins[index]; in != nil {
-				_ = in(ctx)
-			}
+		// if next throttler run needs to be delayed sleep for wait
+		if t.wait > 0 {
+			_ = sleep(ctx, t.wait)
 		}
 	}()
 	dur = time.Since(ts)
@@ -154,7 +152,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler square should sleep for correct time periods": {
 			tms: 3,
-			thr: NewThrottlerSquare(ms1_0, 0, false),
+			thr: NewThrottlerSquare(ms1_0, ms0_0, false),
 			durs: []time.Duration{
 				ms0_9,
 				ms0_9,
@@ -181,7 +179,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler jitter should sleep for correct time periods": {
 			tms: 3,
-			thr: NewThrottlerJitter(ms1_0, 0, false, 0.0),
+			thr: NewThrottlerJitter(ms1_0, ms0_0, false, 0.0),
 			durs: []time.Duration{
 				ms0_9,
 				ms0_9,
@@ -190,7 +188,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler jitter should sleep for random time periods": {
 			tms: 3,
-			thr: NewThrottlerJitter(ms1_0, 0, false, 1.9),
+			thr: NewThrottlerJitter(ms1_0, ms0_0, false, 1.9),
 			durs: []time.Duration{
 				ms0_0,
 				ms0_0,
@@ -415,7 +413,7 @@ func TestThrottlers(t *testing.T) {
 				delayed(ms1_0, nope),
 			},
 			durs: []time.Duration{
-				0,
+				ms0_0,
 				ms0_9,
 				ms0_9,
 			},
@@ -430,7 +428,7 @@ func TestThrottlers(t *testing.T) {
 				delayed(ms1_0, nope),
 			},
 			durs: []time.Duration{
-				0,
+				ms0_0,
 				ms0_9,
 				ms0_9,
 			},
@@ -458,12 +456,12 @@ func TestThrottlers(t *testing.T) {
 				WithPriority(context.Background(), 2),
 			},
 			durs: []time.Duration{
-				0,
-				0,
+				ms0_0,
+				ms0_0,
 				ms2_0,
-				0,
-				0,
-				0,
+				ms0_0,
+				ms0_0,
+				ms0_0,
 				ms2_0,
 			},
 		},
@@ -1098,11 +1096,6 @@ func TestThrottlers(t *testing.T) {
 		"Throttler cache should throttle on close to zero cached throttler": {
 			tms: 3,
 			thr: NewThrottlerCache(NewThrottlerAfter(2), ms1_0),
-			ins: []Runnable{
-				delayed(ms2_0, nope),
-				delayed(ms2_0, nope),
-				delayed(ms2_0, nope),
-			},
 			errs: []error{
 				nil,
 				nil,
@@ -1112,6 +1105,7 @@ func TestThrottlers(t *testing.T) {
 				},
 			},
 			pass: true,
+			wait: ms2_0,
 		},
 		"Throttler cache should throttle on cached throttler": {
 			tms: 3,
