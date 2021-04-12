@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // Throttler defines core gohalt throttler abstraction and exposes pair of counterpart methods: `Acquire` and `Release`.
@@ -1073,5 +1075,34 @@ func (thr *tgenerator) Release(ctx context.Context) error {
 	if thr, ok := thr.thrs.Load(ctxKey(ctx)); ok {
 		return thr.(Throttler).Release(ctx)
 	}
+	return nil
+}
+
+type tsemaphore struct {
+	sem *semaphore.Weighted
+}
+
+// NewThrottlerSemaphore creates new throttler instance that
+// throttles call if underlying semaphore throttles.
+// Use `WithWeight` to override context call weight, 1 by default.
+// - could return `ErrorThreshold`;
+func NewThrottlerSemaphore(weight int64) Throttler {
+	return tsemaphore{sem: semaphore.NewWeighted(weight)}
+}
+
+func (thr tsemaphore) Acquire(ctx context.Context) error {
+	if ok := thr.sem.TryAcquire(ctxWeight(ctx)); !ok {
+		return ErrorThreshold{
+			Throttler: "semaphore",
+			Threshold: strbool(ok),
+		}
+	}
+	return nil
+}
+
+func (thr tsemaphore) Release(ctx context.Context) error {
+	// prevent over releasing panic.
+	defer func() { _ = recover() }()
+	thr.sem.Release(ctxWeight(ctx))
 	return nil
 }

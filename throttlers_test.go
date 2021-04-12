@@ -27,7 +27,7 @@ const (
 	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
-var trun Runner = NewRunnerSync(context.Background(), NewThrottlerBuffered(1))
+var trun Runner = NewRunnerSync(context.TODO(), NewThrottlerBuffered(1))
 
 type tcase struct {
 	tms  uint64            // number of sub runs inside one case
@@ -46,7 +46,7 @@ type tcase struct {
 
 func (t *tcase) run(index int) (dur time.Duration, err error) {
 	// get context with fallback
-	ctx := context.Background()
+	ctx := context.TODO()
 	if index < len(t.ctxs) {
 		ctx = t.ctxs[index]
 	}
@@ -124,7 +124,7 @@ func (t *tcase) result(index int) (dur time.Duration, err error) {
 
 func TestThrottlers(t *testing.T) {
 	DefaultRetriedDuration = time.Millisecond
-	cctx, cancel := context.WithCancel(context.Background())
+	cctx, cancel := context.WithCancel(context.TODO())
 	cancel()
 	testerr := errors.New("test")
 	table := map[string]tcase{
@@ -219,7 +219,7 @@ func TestThrottlers(t *testing.T) {
 			thr: NewThrottlerContext(),
 			ctxs: []context.Context{
 				cctx,
-				context.Background(),
+				context.TODO(),
 				cctx,
 			},
 			errs: []error{
@@ -301,9 +301,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerPast(time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local)),
 			ctxs: []context.Context{
-				WithTimestamp(context.Background(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
-				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
-				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
+				WithTimestamp(context.TODO(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
+				WithTimestamp(context.TODO(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
+				WithTimestamp(context.TODO(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
 			},
 			errs: []error{
 				ErrorThreshold{
@@ -327,9 +327,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerFuture(time.Date(2000, 1, 1, 10, 0, 0, 0, time.Local)),
 			ctxs: []context.Context{
-				WithTimestamp(context.Background(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
-				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
-				WithTimestamp(context.Background(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
+				WithTimestamp(context.TODO(), time.Date(1900, 1, 1, 10, 0, 0, 0, time.UTC)),
+				WithTimestamp(context.TODO(), time.Date(2000, 1, 1, 9, 59, 0, 0, time.Local)),
+				WithTimestamp(context.TODO(), time.Date(2000, 1, 1, 10, 59, 0, 0, time.Local)),
 			},
 			errs: []error{
 				nil,
@@ -447,13 +447,13 @@ func TestThrottlers(t *testing.T) {
 				delayed(ms3_0, nope),
 			},
 			ctxs: []context.Context{
-				WithPriority(context.Background(), 1),
-				WithPriority(context.Background(), 1),
-				WithPriority(context.Background(), 1),
-				WithPriority(context.Background(), 2),
-				WithPriority(context.Background(), 2),
-				WithPriority(context.Background(), 2),
-				WithPriority(context.Background(), 2),
+				WithPriority(context.TODO(), 1),
+				WithPriority(context.TODO(), 1),
+				WithPriority(context.TODO(), 1),
+				WithPriority(context.TODO(), 2),
+				WithPriority(context.TODO(), 2),
+				WithPriority(context.TODO(), 2),
+				WithPriority(context.TODO(), 2),
 			},
 			durs: []time.Duration{
 				ms0_0,
@@ -792,9 +792,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(context.Background(), nil),
-				WithMarshaler(context.Background(), nil),
-				WithMarshaler(context.Background(), nil),
+				WithMarshaler(context.TODO(), nil),
+				WithMarshaler(context.TODO(), nil),
+				WithMarshaler(context.TODO(), nil),
 			},
 			errs: []error{
 				ErrorInternal{Throttler: "enqueue", Message: "context doesn't contain required marshaler"},
@@ -815,9 +815,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(testerr)),
+				WithMarshaler(WithMessage(context.TODO(), "test"), marshal(testerr)),
+				WithMarshaler(WithMessage(context.TODO(), "test"), marshal(testerr)),
+				WithMarshaler(WithMessage(context.TODO(), "test"), marshal(testerr)),
 			},
 			errs: []error{
 				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
@@ -829,9 +829,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{err: testerr}),
 			ctxs: []context.Context{
-				WithMessage(context.Background(), "test"),
-				WithMessage(context.Background(), "test"),
-				WithMessage(context.Background(), "test"),
+				WithMessage(context.TODO(), "test"),
+				WithMessage(context.TODO(), "test"),
+				WithMessage(context.TODO(), "test"),
 			},
 			errs: []error{
 				ErrorInternal{Throttler: "enqueue", Message: testerr.Error()},
@@ -843,9 +843,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerEnqueue(enqmock{}),
 			ctxs: []context.Context{
-				WithMarshaler(WithMessage(context.Background(), "test"), marshal(nil)),
-				WithMessage(context.Background(), "test"),
-				WithMessage(context.Background(), "test"),
+				WithMarshaler(WithMessage(context.TODO(), "test"), marshal(nil)),
+				WithMessage(context.TODO(), "test"),
+				WithMessage(context.TODO(), "test"),
 			},
 		},
 		"Throttler adaptive should throttle on throttling adoptee": {
@@ -883,9 +883,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerPattern(),
 			ctxs: []context.Context{
-				context.Background(),
-				WithKey(context.Background(), ""),
-				WithKey(context.Background(), "test"),
+				context.TODO(),
+				WithKey(context.TODO(), ""),
+				WithKey(context.TODO(), "test"),
 			},
 			errs: []error{
 				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
@@ -906,11 +906,11 @@ func TestThrottlers(t *testing.T) {
 				},
 			),
 			ctxs: []context.Context{
-				context.Background(),
-				WithKey(context.Background(), "125"),
-				WithKey(context.Background(), "test"),
-				WithKey(context.Background(), "nontest"),
-				WithKey(context.Background(), "non"),
+				context.TODO(),
+				WithKey(context.TODO(), "125"),
+				WithKey(context.TODO(), "test"),
+				WithKey(context.TODO(), "nontest"),
+				WithKey(context.TODO(), "non"),
 			},
 			errs: []error{
 				ErrorInternal{Throttler: "pattern", Message: "known key is not found"},
@@ -1132,9 +1132,9 @@ func TestThrottlers(t *testing.T) {
 				0.1,
 			),
 			ctxs: []context.Context{
-				WithKey(context.Background(), "test"),
-				WithKey(context.Background(), "nontest"),
-				WithKey(context.Background(), "111"),
+				WithKey(context.TODO(), "test"),
+				WithKey(context.TODO(), "nontest"),
+				WithKey(context.TODO(), "111"),
 			},
 			errs: []error{
 				ErrorInternal{
@@ -1161,11 +1161,11 @@ func TestThrottlers(t *testing.T) {
 				0.1,
 			),
 			ctxs: []context.Context{
-				WithKey(context.Background(), "125"),
-				WithKey(context.Background(), "125"),
-				WithKey(context.Background(), "test"),
-				WithKey(context.Background(), "nontest"),
-				WithKey(context.Background(), "125"),
+				WithKey(context.TODO(), "125"),
+				WithKey(context.TODO(), "125"),
+				WithKey(context.TODO(), "test"),
+				WithKey(context.TODO(), "nontest"),
+				WithKey(context.TODO(), "125"),
 			},
 			errs: []error{
 				nil,
@@ -1191,13 +1191,13 @@ func TestThrottlers(t *testing.T) {
 				1000,
 			),
 			ctxs: []context.Context{
-				WithKey(context.Background(), "111"),
-				WithKey(context.Background(), "test"),
-				WithKey(context.Background(), "111"),
-				WithKey(context.Background(), "test1"),
-				WithKey(context.Background(), "kkk"),
-				WithKey(context.Background(), "kkk"),
-				WithKey(context.Background(), "test2"),
+				WithKey(context.TODO(), "111"),
+				WithKey(context.TODO(), "test"),
+				WithKey(context.TODO(), "111"),
+				WithKey(context.TODO(), "test1"),
+				WithKey(context.TODO(), "kkk"),
+				WithKey(context.TODO(), "kkk"),
+				WithKey(context.TODO(), "test2"),
 			},
 			errs: []error{
 				nil,
@@ -1213,6 +1213,28 @@ func TestThrottlers(t *testing.T) {
 					Threshold: strpair{current: 2, threshold: 1},
 				},
 				nil,
+			},
+		},
+		"Throttler semaphore should throttle on semaphore threshold": {
+			tms: 3,
+			thr: NewThrottlerSemaphore(5),
+			ctxs: []context.Context{
+				WithWeight(context.TODO(), 2),
+				WithWeight(context.TODO(), 1),
+				WithWeight(context.TODO(), 3),
+			},
+			acts: []Runnable{
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+				delayed(ms1_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "semaphore",
+					Threshold: strbool(false),
+				},
 			},
 		},
 	}
@@ -1256,7 +1278,7 @@ func BenchmarkComplexThrottlers(b *testing.B) {
 			Stats{MEMAlloc: 1000},
 		),
 	)
-	ctx := context.Background()
+	ctx := context.TODO()
 	for i := 0; i < b.N; i++ {
 		_ = thr.Acquire(ctx)
 		_ = thr.Release(ctx)

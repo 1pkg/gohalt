@@ -13,6 +13,7 @@ const (
 	ghctxmessage   ghctxid = "gohalt_context_message"
 	ghctxtimestamp ghctxid = "gohalt_context_timestamp"
 	ghctxmarshaler ghctxid = "gohalt_context_marshaler"
+	ghctxweight    ghctxid = "gohalt_context_weight"
 )
 
 // WithTimestamp adds the provided timestamp to the provided context
@@ -152,4 +153,20 @@ func (ctx ctxthr) Err() (err error) {
 
 func (ctx ctxthr) Throttler() Throttler {
 	return ctx.thr
+}
+
+// WithWeight adds the provided weight to the provided context
+// to differ `Acquire` weight levels.
+// Resulted context is used by: `semaphore` throtttler.
+func WithWeight(ctx context.Context, weight int64) context.Context {
+	return context.WithValue(ctx, ghctxweight, weight)
+}
+
+func ctxWeight(ctx context.Context) int64 {
+	if val := ctx.Value(ghctxweight); val != nil {
+		if weight, ok := val.(int64); ok && weight > 0 {
+			return weight
+		}
+	}
+	return 1
 }
