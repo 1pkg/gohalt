@@ -73,7 +73,7 @@ func WithPriority(ctx context.Context, priority uint8) context.Context
 func WithWeight(ctx context.Context, weight int64) context.Context
 // WithKey adds the provided key to the provided context
 // to add additional call identifier to context.
-// Resulted context is used by: `before`, `after`, `timed`, `adaptive`, `semaphore` and `cellrate` throtttlers.
+// Resulted context is used by: `before`, `after`, `timed`, `adaptive`, `semaphore`, `cellrate` and `bucket` throtttlers.
 func WithKey(ctx context.Context, key string) context.Context
 // WithMessage adds the provided message to the provided context
 // to add additional message that need to be used to context.
@@ -167,6 +167,7 @@ You can find list of returning error types for all existing throttlers in thrott
 | generator | `func NewThrottlerGenerator(gen Generator, capacity uint64, eviction float64) Throttler` | Creates new throttler instance that throttles if found key matching throttler throttles.<br> If no key matching throttler has been found generator used insted to provide new throttler that will be added to existing throttlers map.<br> Generated throttlers are kept in bounded map with capacity *c* defined by the specified capacity and eviction rate *e* defined by specified eviction value is normalized to [0.0, 1.0], where eviction rate affects number of throttlers that will be removed from the map after bounds overflow.<br> Use `WithKey` to specify key for throttler matching and generation.<br> - could return `ErrorInternal`;<br> - could return any underlying throttler error; |
 | semaphore | `func NewThrottlerSemaphore(weight int64) Throttler` | Creates new throttler instance that throttles call if underlying semaphore throttles.<br>Use `WithWeight` to override context call weight, 1 by default.<br> - could return `ErrorThreshold`; |
 | cellrate | `func NewThrottlerCellRate(threshold uint64, interval time.Duration, monotone bool) Throttler` | Creates new throttler instance that uses generic cell rate algorithm to throttles call within provided interval and threshold.<br>If provided monotone flag is set class to release will have no effect on throttler.<br>Use `WithWeight` to override context call qunatity, 1 by default.<br> - could return `ErrorThreshold`; |
+| bucket | `func NewThrottlerBucket(threshold uint64, interval time.Duration, monotone bool) Throttler` | Creates new throttler instance that leaky bucket algorithm to throttles call within provided interval and threshold.<br>If provided monotone flag is set class to release will have no effect on throttler.<br>Use `WithWeight` to override context call qunatity, 1 by default.<br> - could return `ErrorThreshold`; |
 
 ## Integrations
 

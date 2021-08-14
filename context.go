@@ -50,7 +50,7 @@ func ctxPriority(ctx context.Context, limit uint8) uint8 {
 
 // WithWeight adds the provided weight to the provided context
 // to differ `Acquire` weight levels.
-// Resulted context is used by: `before`, `after`, `timed`, `adaptive`, `semaphore` and `cellrate` throtttlers.
+// Resulted context is used by: `before`, `after`, `timed`, `adaptive`, `semaphore`, `cellrate` and `bucket` throtttlers.
 func WithWeight(ctx context.Context, weight int64) context.Context {
 	return context.WithValue(ctx, ghctxweight, weight)
 }
@@ -58,6 +58,15 @@ func WithWeight(ctx context.Context, weight int64) context.Context {
 func ctxWeight(ctx context.Context) int64 {
 	if val := ctx.Value(ghctxweight); val != nil {
 		if weight, ok := val.(int64); ok {
+			return weight
+		}
+	}
+	return 1
+}
+
+func ctxWeightMod(ctx context.Context) int64 {
+	if val := ctx.Value(ghctxweight); val != nil {
+		if weight, ok := val.(int64); ok && weight > 0 {
 			return weight
 		}
 	}
