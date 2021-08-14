@@ -1106,3 +1106,49 @@ func (thr tsemaphore) Release(ctx context.Context) error {
 	thr.sem.Release(ctxWeight(ctx))
 	return nil
 }
+
+type tcellrate struct {
+	current   uint64
+	threshold uint64
+	quantum   time.Duration
+	monotone  bool
+}
+
+// NewThrottlerCellRate creates new throttler instance that
+// uses generic cell rate algorithm to throttles call within provided interval and threshold.
+// If provided monotone flag is set class to release will have no effect on throttler.
+// Use `WithWeight` to override context call qunatity, 1 by default.
+// - could return `ErrorThreshold`;
+func NewThrottlerCellRate(threshold uint64, interval time.Duration, monotone bool) Throttler {
+	quantum := time.Duration(math.Ceil(float64(interval) / float64(threshold)))
+	return &tcellrate{threshold: threshold, quantum: quantum, monotone: monotone}
+}
+
+func (thr *tcellrate) Acquire(ctx context.Context) error {
+	current := atomicGet(&thr.current)
+	nowTs := uint64(time.Now().UTC().UnixNano())
+	if current < nowTs {
+		current = nowTs
+	}
+	updated := current + (uint64(thr.quantum) * uint64(ctxWeight(ctx)))
+	max := nowTs + (uint64(thr.quantum) * thr.threshold)
+	if updated > max {
+		current := uint64(math.Round(float64(updated-nowTs) / float64(thr.quantum)))
+		return ErrorThreshold{
+			Throttler: "cellrate",
+			Threshold: strpair{current: current, threshold: thr.threshold},
+		}
+	}
+	atomicSet(&thr.current, updated)
+	return nil
+}
+
+func (thr *tcellrate) Release(ctx context.Context) error {
+	// don't decrement calls for monotone cell.
+	if thr.monotone {
+		return nil
+	}
+	updated := atomicGet(&thr.current) - (uint64(thr.quantum) * uint64(ctxWeight(ctx)))
+	atomicSet(&thr.current, updated)
+	return nil
+}

@@ -16,6 +16,7 @@ func TestContext(t *testing.T) {
 	ctx := WithParams(
 		context.Background(),
 		time.Now(),
+		1,
 		0,
 		"",
 		nil,

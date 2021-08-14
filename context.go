@@ -48,6 +48,22 @@ func ctxPriority(ctx context.Context, limit uint8) uint8 {
 	return 1
 }
 
+// WithWeight adds the provided weight to the provided context
+// to differ `Acquire` weight levels.
+// Resulted context is used by: `semaphore` and `cellrate` throtttlers.
+func WithWeight(ctx context.Context, weight int64) context.Context {
+	return context.WithValue(ctx, ghctxweight, weight)
+}
+
+func ctxWeight(ctx context.Context) int64 {
+	if val := ctx.Value(ghctxweight); val != nil {
+		if weight, ok := val.(int64); ok && weight > 0 {
+			return weight
+		}
+	}
+	return 1
+}
+
 // WithKey adds the provided key to the provided context
 // to add additional call identifier to context.
 // Resulted context is used by: `pattern` and `generator` throtttlers.
@@ -94,6 +110,7 @@ func ctxMarshaler(ctx context.Context) Marshaler {
 // WithParams facade call that respectively calls:
 // - `WithTimestamp`
 // - `WithPriority`
+// - `WithWeight`
 // - `WithKey`
 // - `WithMessage`
 // - `WithMarshaler`
@@ -101,12 +118,14 @@ func WithParams(
 	ctx context.Context,
 	ts time.Time,
 	priority uint8,
+	weight int64,
 	key string,
 	message interface{},
 	marshaler Marshaler,
 ) context.Context {
 	ctx = WithTimestamp(ctx, ts)
 	ctx = WithPriority(ctx, priority)
+	ctx = WithWeight(ctx, weight)
 	ctx = WithKey(ctx, key)
 	ctx = WithMessage(ctx, message)
 	ctx = WithMarshaler(ctx, marshaler)
@@ -153,20 +172,4 @@ func (ctx ctxthr) Err() (err error) {
 
 func (ctx ctxthr) Throttler() Throttler {
 	return ctx.thr
-}
-
-// WithWeight adds the provided weight to the provided context
-// to differ `Acquire` weight levels.
-// Resulted context is used by: `semaphore` throtttler.
-func WithWeight(ctx context.Context, weight int64) context.Context {
-	return context.WithValue(ctx, ghctxweight, weight)
-}
-
-func ctxWeight(ctx context.Context) int64 {
-	if val := ctx.Value(ghctxweight); val != nil {
-		if weight, ok := val.(int64); ok && weight > 0 {
-			return weight
-		}
-	}
-	return 1
 }
