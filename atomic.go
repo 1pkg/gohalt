@@ -5,6 +5,13 @@ import (
 	"sync/atomic"
 )
 
+func atomicBSingAdd(number *uint64, delta int64) (res uint64) {
+	if delta > 0 {
+		return atomicBAdd(number, uint64(delta))
+	}
+	return atomicBSub(number, uint64(-delta))
+}
+
 func atomicBAdd(number *uint64, delta uint64) (res uint64) {
 	prev := atomic.LoadUint64(number)
 	if res = atomic.AddUint64(number, delta); res < prev {

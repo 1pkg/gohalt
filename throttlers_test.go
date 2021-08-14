@@ -258,19 +258,27 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler before should throttle before threshold": {
 			tms: 6,
-			thr: NewThrottlerBefore(3),
+			thr: NewThrottlerBefore(4),
+			ctxs: []context.Context{
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+				WithWeight(context.TODO(), 2),
+				context.TODO(),
+				context.TODO(),
+			},
 			errs: []error{
 				ErrorThreshold{
 					Throttler: "before",
-					Threshold: strpair{current: 1, threshold: 3},
+					Threshold: strpair{current: 1, threshold: 4},
 				},
 				ErrorThreshold{
 					Throttler: "before",
-					Threshold: strpair{current: 2, threshold: 3},
+					Threshold: strpair{current: 2, threshold: 4},
 				},
 				ErrorThreshold{
 					Throttler: "before",
-					Threshold: strpair{current: 3, threshold: 3},
+					Threshold: strpair{current: 3, threshold: 4},
 				},
 				nil,
 				nil,
@@ -280,6 +288,13 @@ func TestThrottlers(t *testing.T) {
 		"Throttler after should throttle after threshold": {
 			tms: 6,
 			thr: NewThrottlerAfter(3),
+			ctxs: []context.Context{
+				WithWeight(context.TODO(), 3),
+				WithWeight(context.TODO(), -1),
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+			},
 			errs: []error{
 				nil,
 				nil,
@@ -388,9 +403,9 @@ func TestThrottlers(t *testing.T) {
 			tms: 3,
 			thr: NewThrottlerRunning(1),
 			acts: []Runnable{
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
-				delayed(ms1_0, nope),
+				delayed(ms2_0, nope),
+				delayed(ms2_0, nope),
+				delayed(ms2_0, nope),
 			},
 			errs: []error{
 				nil,
