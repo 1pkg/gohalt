@@ -1095,7 +1095,7 @@ func NewThrottlerSemaphore(weight int64) Throttler {
 }
 
 func (thr tsemaphore) Acquire(ctx context.Context) error {
-	if ok := thr.sem.TryAcquire(ctxWeight(ctx)); !ok {
+	if ok := thr.sem.TryAcquire(ctxWeightMod(ctx)); !ok {
 		return ErrorThreshold{
 			Throttler: "semaphore",
 			Threshold: strbool(ok),
@@ -1107,7 +1107,7 @@ func (thr tsemaphore) Acquire(ctx context.Context) error {
 func (thr tsemaphore) Release(ctx context.Context) error {
 	// prevent over releasing panic.
 	defer func() { _ = recover() }()
-	thr.sem.Release(ctxWeight(ctx))
+	thr.sem.Release(ctxWeightMod(ctx))
 	return nil
 }
 
@@ -1129,21 +1129,20 @@ func NewThrottlerCellRate(threshold uint64, interval time.Duration, monotone boo
 }
 
 func (thr *tcellrate) Acquire(ctx context.Context) error {
-	current := atomicGet(&thr.current)
 	nowTs := uint64(time.Now().UTC().UnixNano())
-	if current < nowTs {
-		current = nowTs
+	delta := (uint64(thr.quantum) * uint64(ctxWeightMod(ctx)))
+	if current := atomicGet(&thr.current); current < nowTs {
+		delta += nowTs - current
 	}
-	updated := current + (uint64(thr.quantum) * uint64(ctxWeight(ctx)))
 	max := nowTs + (uint64(thr.quantum) * thr.threshold)
-	if updated > max {
-		current := uint64(math.Round(float64(updated-nowTs) / float64(thr.quantum)))
+	if current := atomicBAdd(&thr.current, delta); current > max {
+		atomicBSub(&thr.current, delta)
+		cur := thr.threshold + uint64(math.Ceil(float64(current-max)/float64(thr.quantum)))
 		return ErrorThreshold{
 			Throttler: "cellrate",
-			Threshold: strpair{current: current, threshold: thr.threshold},
+			Threshold: strpair{current: cur, threshold: thr.threshold},
 		}
 	}
-	atomicSet(&thr.current, updated)
 	return nil
 }
 
@@ -1152,7 +1151,52 @@ func (thr *tcellrate) Release(ctx context.Context) error {
 	if thr.monotone {
 		return nil
 	}
-	updated := atomicGet(&thr.current) - (uint64(thr.quantum) * uint64(ctxWeight(ctx)))
-	atomicSet(&thr.current, updated)
+	atomicBSub(&thr.current, uint64(thr.quantum)*uint64(ctxWeightMod(ctx)))
+	return nil
+}
+
+type tbucket struct {
+	current   uint64
+	lastTs    uint64
+	threshold uint64
+	quantum   time.Duration
+	monotone  bool
+}
+
+// NewThrottlerBucket creates new throttler instance that
+// uses leaky bucket algorithm to throttles call within provided interval and threshold.
+// If provided monotone flag is set class to release will have no effect on throttler.
+// Use `WithWeight` to override context call qunatity, 1 by default.
+// - could return `ErrorThreshold`;
+func NewThrottlerBucket(threshold uint64, interval time.Duration, monotone bool) Throttler {
+	quantum := time.Duration(math.Ceil(float64(interval) / float64(threshold)))
+	return &tbucket{threshold: threshold, quantum: quantum, monotone: monotone}
+}
+
+func (thr *tbucket) Acquire(ctx context.Context) error {
+	nowTs := uint64(time.Now().UTC().UnixNano())
+	var delta int64
+	if lastTs := atomicGet(&thr.lastTs); lastTs > 0 {
+		delta = int64(float64(nowTs-lastTs) / float64(thr.quantum))
+		nowTs = uint64(delta) * uint64(thr.quantum)
+	}
+	diff := ctxWeightMod(ctx) - delta
+	if current := atomicBSingAdd(&thr.current, diff); current > thr.threshold {
+		atomicBSingAdd(&thr.current, -diff)
+		return ErrorThreshold{
+			Throttler: "bucket",
+			Threshold: strpair{current: current, threshold: thr.threshold},
+		}
+	}
+	atomicBAdd(&thr.lastTs, nowTs)
+	return nil
+}
+
+func (thr *tbucket) Release(ctx context.Context) error {
+	// don't decrement calls for monotone cell.
+	if thr.monotone {
+		return nil
+	}
+	atomicBSub(&thr.current, uint64(ctxWeightMod(ctx)))
 	return nil
 }

@@ -20,11 +20,11 @@ const (
 	ms3_0  time.Duration = 3 * time.Millisecond
 	ms4_0  time.Duration = 4 * time.Millisecond
 	ms5_0  time.Duration = 5 * time.Millisecond
-	ms6_0  time.Duration = 6 * time.Millisecond
 	ms7_0  time.Duration = 7 * time.Millisecond
 	ms8_0  time.Duration = 8 * time.Millisecond
 	ms9_0  time.Duration = 9 * time.Millisecond
 	ms10_0 time.Duration = 10 * time.Millisecond
+	ms12_0 time.Duration = 12 * time.Millisecond
 	ms30_0 time.Duration = 30 * time.Millisecond
 )
 
@@ -1255,7 +1255,7 @@ func TestThrottlers(t *testing.T) {
 		},
 		"Throttler monotone cellrate should throttle on threshold": {
 			tms: 5,
-			thr: NewThrottlerCellRate(2, ms6_0, true),
+			thr: NewThrottlerCellRate(2, ms12_0, true),
 			ctxs: []context.Context{
 				context.TODO(),
 				context.TODO(),
@@ -1267,8 +1267,8 @@ func TestThrottlers(t *testing.T) {
 				nope,
 				nope,
 				nope,
-				delayed(ms4_0, nope),
-				delayed(ms3_0, nope),
+				delayed(ms7_0, nope),
+				delayed(ms9_0, nope),
 			},
 			errs: []error{
 				nil,
@@ -1280,7 +1280,7 @@ func TestThrottlers(t *testing.T) {
 				nil,
 				ErrorThreshold{
 					Throttler: "cellrate",
-					Threshold: strpair{current: 3, threshold: 2},
+					Threshold: strpair{current: 4, threshold: 2},
 				},
 			},
 		},
@@ -1310,6 +1310,68 @@ func TestThrottlers(t *testing.T) {
 				},
 				ErrorThreshold{
 					Throttler: "cellrate",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				nil,
+			},
+		},
+		"Throttler monotone bucket should throttle on threshold": {
+			tms: 5,
+			thr: NewThrottlerBucket(2, ms12_0, true),
+			ctxs: []context.Context{
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+				WithWeight(context.TODO(), 2),
+			},
+			pres: []Runnable{
+				nope,
+				nope,
+				nope,
+				delayed(ms7_0, nope),
+				delayed(ms9_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "bucket",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				nil,
+				ErrorThreshold{
+					Throttler: "bucket",
+					Threshold: strpair{current: 4, threshold: 2},
+				},
+			},
+		},
+		"Throttler not monotone bucket should throttle on threshold": {
+			tms: 5,
+			thr: NewThrottlerBucket(2, ms9_0, false),
+			acts: []Runnable{
+				delayed(ms5_0, nope),
+				delayed(ms5_0, nope),
+				delayed(ms5_0, nope),
+				nope,
+				nope,
+			},
+			pres: []Runnable{
+				nope,
+				nope,
+				nope,
+				nope,
+				delayed(ms7_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "bucket",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				ErrorThreshold{
+					Throttler: "bucket",
 					Threshold: strpair{current: 3, threshold: 2},
 				},
 				nil,
