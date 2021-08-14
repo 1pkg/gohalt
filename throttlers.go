@@ -219,13 +219,14 @@ type tbefore struct {
 
 // NewThrottlerBefore creates new throttler instance that
 // throttles each call below the i-th call defined by the specified threshold.
+// Use `WithWeight` to override context call qunatity, 1 by default.
 // - could return `ErrorThreshold`;
 func NewThrottlerBefore(threshold uint64) Throttler {
 	return &tbefore{threshold: threshold}
 }
 
-func (thr *tbefore) Acquire(context.Context) error {
-	if current := atomicBIncr(&thr.current); current <= thr.threshold {
+func (thr *tbefore) Acquire(ctx context.Context) error {
+	if current := atomicBSingAdd(&thr.current, ctxWeight(ctx)); current <= thr.threshold {
 		return ErrorThreshold{
 			Throttler: "before",
 			Threshold: strpair{current: current, threshold: thr.threshold},
@@ -245,13 +246,14 @@ type tafter struct {
 
 // NewThrottlerAfter creates new throttler instance that
 // throttles each call after the i-th call defined by the specified threshold.
+// Use `WithWeight` to override context call qunatity, 1 by default.
 // - could return `ErrorThreshold`;
 func NewThrottlerAfter(threshold uint64) Throttler {
 	return &tafter{threshold: threshold}
 }
 
-func (thr *tafter) Acquire(context.Context) error {
-	if current := atomicBIncr(&thr.current); current > thr.threshold {
+func (thr *tafter) Acquire(ctx context.Context) error {
+	if current := atomicBSingAdd(&thr.current, ctxWeight(ctx)); current > thr.threshold {
 		return ErrorThreshold{
 			Throttler: "after",
 			Threshold: strpair{current: current, threshold: thr.threshold},
@@ -453,6 +455,7 @@ type ttimed struct {
 // q defined by the specified threshold in the specified interval.
 // Periodically each specified interval the running quota number is reseted.
 // If quantum is set then quantum will be used instead of interval to provide the running quota delta updates.
+// Use `WithWeight` to override context call qunatity, 1 by default.
 // - could return `ErrorThreshold`;
 func NewThrottlerTimed(threshold uint64, interval time.Duration, quantum time.Duration) Throttler {
 	tafter := NewThrottlerAfter(threshold).(*tafter)
@@ -725,6 +728,7 @@ type tadaptive struct {
 // Provided adapted throttler adjusts the running quota of adapter throttler by changing the value by d
 // defined by the specified step, it subtracts *d^2* from the running quota
 // if adapted throttler throttles or adds *d* to the running quota if it doesn't.
+// Use `WithWeight` to override context call qunatity, 1 by default.
 // - could return `ErrorThreshold`;
 func NewThrottlerAdaptive(
 	threshold uint64,
