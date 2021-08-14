@@ -17,17 +17,6 @@
 
 Gohalt is simple and convenient yet powerful and efficient throttling go library. Gohalt provides various throttlers and surronding tools to build throttling pipelines and rate limiters of any complexity adjusted to your specific needs. Gohalt provides an easy way to integrate throttling and rate limiting with your infrastructure through built in middlewares.
 
-## Features
-
-- [x] Blastly fast and efficient, Gohalt has minimal performance overhead, it was design with performance as the primary goal.
-- [x] Flexible and powerful, Gohalt supports numbers of different throttling strategies and conditions that could be easily combined and customized to match your needs [link](#Throttlers).
-- [x] Easy to integrate, Gohalt provides separate package with numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
-- [x] Metrics awareness, Gohalt could use Prometheus metrics as a conditions for throttling.
-- [x] Queueing and delayed processing, Gohalt supports throttling queueing which means you can easily save throttled query to rabbitmq/kafka stream to process it later.
-
-- [ ] Durable storage, Gohalt has embedded k/v storage to provide thtottling persistence and durability.
-- [ ] Meta awareness, Gohalt provides easy way to access inner throttlers state in form of meta that can be later exposed to logging, headers, etc. 
-
 ## Concepts
 
 Gohalt uses `Throttler` as the core interface for all derived throttlers and surronding tools.
@@ -78,6 +67,10 @@ func WithTimestamp(ctx context.Context, ts time.Time) context.Context
 // to differ `Acquire` priority levels.
 // Resulted context is used by: `priority` throtttler.
 func WithPriority(ctx context.Context, priority uint8) context.Context
+// WithWeight adds the provided weight to the provided context
+// to differ `Acquire` weight levels.
+// Resulted context is used by: `semaphore` and `cellrate` throtttlers.
+func WithWeight(ctx context.Context, weight int64) context.Context
 // WithKey adds the provided key to the provided context
 // to add additional call identifier to context.
 // Resulted context is used by: `pattern` and `generator` throtttlers.
@@ -94,10 +87,11 @@ func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context
 // WithParams facade call that respectively calls:
 // - `WithTimestamp`
 // - `WithPriority`
+// - `WithWeight`
 // - `WithKey`
 // - `WithMessage`
 // - `WithMarshaler`
-func WithParams(ctx context.Context, ts time.Time, priority uint8, key string, message interface{}, marshaler Marshaler) context.Context
+func WithParams(ctx context.Context, ts time.Time, priority uint8, weight int64, key string, message interface{}, marshaler Marshaler) context.Context
 ```
 Also there is yet another throttling sugar `func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) context.Context` related to context. Which defines context implementation that uses parrent context plus throttler internally. Using it you can keep typical context patterns for cancelation handling and apply and combine it with throttling. 
 ```go
@@ -172,6 +166,7 @@ You can find list of returning error types for all existing throttlers in thrott
 | cache | `func NewThrottlerCache(thr Throttler, cache time.Duration) Throttler` | Caches provided throttler calls for the provided cache duration, throttler release resulting resets cache.<br> Only non throttling calls are cached for the provided cache duration.<br> - could return any underlying throttler error; |
 | generator | `func NewThrottlerGenerator(gen Generator, capacity uint64, eviction float64) Throttler` | Creates new throttler instance that throttles if found key matching throttler throttles.<br> If no key matching throttler has been found generator used insted to provide new throttler that will be added to existing throttlers map.<br> Generated throttlers are kept in bounded map with capacity *c* defined by the specified capacity and eviction rate *e* defined by specified eviction value is normalized to [0.0, 1.0], where eviction rate affects number of throttlers that will be removed from the map after bounds overflow.<br> Use `WithKey` to specify key for throttler matching and generation.<br> - could return `ErrorInternal`;<br> - could return any underlying throttler error; |
 | semaphore | `func NewThrottlerSemaphore(weight int64) Throttler` | Creates new throttler instance that throttles call if underlying semaphore throttles.<br>Use `WithWeight` to override context call weight, 1 by default.<br> - could return `ErrorThreshold`; |
+| cellrate | `func NewThrottlerCellRate(threshold uint64, interval time.Duration, monotone bool) Throttler` | Creates new throttler instance that uses generic cell rate algorithm to throttles call within provided interval and threshold.<br>If provided monotone flag is set class to release will have no effect on throttler.<br>Use `WithWeight` to override context call qunatity, 1 by default.<br> - could return `ErrorThreshold`; |
 
 ## Integrations
 

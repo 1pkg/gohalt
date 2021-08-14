@@ -20,6 +20,7 @@ const (
 	ms3_0  time.Duration = 3 * time.Millisecond
 	ms4_0  time.Duration = 4 * time.Millisecond
 	ms5_0  time.Duration = 5 * time.Millisecond
+	ms6_0  time.Duration = 6 * time.Millisecond
 	ms7_0  time.Duration = 7 * time.Millisecond
 	ms8_0  time.Duration = 8 * time.Millisecond
 	ms9_0  time.Duration = 9 * time.Millisecond
@@ -1235,6 +1236,68 @@ func TestThrottlers(t *testing.T) {
 					Throttler: "semaphore",
 					Threshold: strbool(false),
 				},
+			},
+		},
+		"Throttler monotone cellrate should throttle on threshold": {
+			tms: 5,
+			thr: NewThrottlerCellRate(2, ms6_0, true),
+			ctxs: []context.Context{
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+				context.TODO(),
+				WithWeight(context.TODO(), 2),
+			},
+			pres: []Runnable{
+				nope,
+				nope,
+				nope,
+				delayed(ms4_0, nope),
+				delayed(ms3_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "cellrate",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				nil,
+				ErrorThreshold{
+					Throttler: "cellrate",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+			},
+		},
+		"Throttler not monotone cellrate should throttle on threshold": {
+			tms: 5,
+			thr: NewThrottlerCellRate(2, ms9_0, false),
+			acts: []Runnable{
+				delayed(ms5_0, nope),
+				delayed(ms5_0, nope),
+				delayed(ms5_0, nope),
+				nope,
+				nope,
+			},
+			pres: []Runnable{
+				nope,
+				nope,
+				nope,
+				nope,
+				delayed(ms7_0, nope),
+			},
+			errs: []error{
+				nil,
+				nil,
+				ErrorThreshold{
+					Throttler: "cellrate",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				ErrorThreshold{
+					Throttler: "cellrate",
+					Threshold: strpair{current: 3, threshold: 2},
+				},
+				nil,
 			},
 		},
 	}
