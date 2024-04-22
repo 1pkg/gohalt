@@ -169,37 +169,6 @@ You can find list of returning error types for all existing throttlers in thrott
 | cellrate | `func NewThrottlerCellRate(threshold uint64, interval time.Duration, monotone bool) Throttler` | Creates new throttler instance that uses generic cell rate algorithm to throttles call within provided interval and threshold.<br>If provided monotone flag is set class to release will have no effect on throttler.<br>Use `WithWeight` to override context call qunatity, 1 by default.<br> - could return `ErrorThreshold`; |
 | bucket | `func NewThrottlerBucket(threshold uint64, interval time.Duration, monotone bool) Throttler` | Creates new throttler instance that leaky bucket algorithm to throttles call within provided interval and threshold.<br>If provided monotone flag is set class to release will have no effect on throttler.<br>Use `WithWeight` to override context call qunatity, 1 by default.<br> - could return `ErrorThreshold`; |
 
-## Integrations
-
-**Note:** in gohalt v0.3.0 all integrations were moved to separate [repository](https://github.com/1pkg/gohaltlib) to make base gohalt repository dependencies footprint small.
-
-`go get -u github.com/1pkg/gohaltlib`
-
-| Library | Adapter |
-|---|---|
-| gin | `func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc` |
-| stdlib http handler | `func NewMiddlewareStd(h http.Handler, thr Throttler, with StdWith, on StdOn) http.Handler` |
-| echo | `func NewMiddlewareEcho(thr Throttler, with EchoWith, on EchoOn) echo.MiddlewareFunc` |
-| beego | `func NewMiddlewareBeego(thr Throttler, with BeegoWith, on BeegoOn) beego.FilterFunc` |
-| kit | `func NewMiddlewareKit(thr Throttler, with KitWith, on KitOn) endpoint.Middleware` |
-| mux | `func NewMiddlewareMux(h http.Handler, thr Throttler, with MuxWith, on MuxOn) http.Handler` |
-| httprouter | `func NewMiddlewareRouter(h http.Handler, thr Throttler, with RouterWith, on RouterOn) http.Handler` |
-| reveal | `func NewMiddlewareRevel(thr Throttler, with RevealWith, on RevealOn) revel.Filter` |
-| iris | `func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler` |
-| fasthttp | `func NewMiddlewareFast(h fasthttp.RequestHandler, thr Throttler, with FastWith, on FastOn) fasthttp.RequestHandler` |
-| stdlib rt | `func NewRoundTripperStd(rt http.RoundTripper, thr Throttler, with RoundTripperStdWith, on RoundTripperStdOn) http.RoundTripper` |
-| fasthttp rt | `func NewRoundTripperFast(rt RoundTripperFast, thr Throttler, with RoundTripperFastWith, on RoundTripperFastOn) RoundTripperFast` |
-| stdlib rpc client coded | `func NewRPCClientCodec(cc rpc.ClientCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ClientCodec` |
-| stdlib rpc server coded | `func NewRPCServerCodec(sc rpc.ServerCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ServerCodec` |
-| grpc client stream | `func NewGRPCClientStream(cs grpc.ClientStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ClientStream` |
-| grpc server stream | `func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ServerStream` |
-| go-micro client | `func NewMicroClient(thr Throttler, with MicroClientWith, on MicroOn) client.Wrapper` |
-| go-micro server | `func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.HandlerWrapper` |
-| stdlib net conn | `func NewNetConn(conn net.Conn, thr Throttler, with NetConnWith, on NetConnOn, mode NetConnMode) net.Conn` |
-| stdlib sql | `func NewSQLClient(cli SQLClient, thr Throttler, with SQLClientWith, on SQLClientOn) SQLClient` |
-| stdlib io reader | `func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) io.Reader` |
-| stdlib io writer | `func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) io.Writer` |
-
 ## Licence
 
 Gohalt is licensed under the MIT License.  
