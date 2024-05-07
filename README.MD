@@ -101,7 +101,7 @@ select {
 	default:
 }
 ```
-If internal context throttler is throttling context done chanel will be closed respectively. **Note** such behavior is implemented by throttler long pooling with the specified frequency, so efficiently there will be additional throttling user in form of long pooling goroutine.
+If internal context throttler is throttling context done channel will be closed respectively. **Note** such behavior is implemented by throttler long pooling with the specified frequency, so efficiently there will be additional throttling user in form of long pooling goroutine.
 
 ```go
 // complex throttler example
